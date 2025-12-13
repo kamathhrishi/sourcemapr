@@ -1,0 +1,2540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Observability</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- PDF.js for rendering PDFs with text selection and highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        apple: {
+                            bg: '#f5f5f7',
+                            card: '#ffffff',
+                            border: '#d2d2d7',
+                            text: '#1d1d1f',
+                            secondary: '#86868b',
+                            tertiary: '#a1a1a6',
+                            blue: '#0071e3',
+                            green: '#34c759',
+                            orange: '#ff9500',
+                            purple: '#af52de',
+                            pink: '#ff2d55',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif; }
+        .card { transition: all 0.2s ease; }
+        .card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+        .live-dot { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .chunk-highlight { background: #fde68a; color: #78350f; padding: 2px 4px; border-radius: 3px; }
+
+        /* PDF.js viewer styles */
+        .pdf-container { position: relative; overflow: auto; background: #525659; }
+        .pdf-page-wrapper { position: relative; margin: 0 auto 16px auto; box-shadow: 0 2px 8px rgba(0,0,0,0.3); background: white; }
+        .pdf-page-wrapper canvas { display: block; }
+
+        /* Text layer for selection and highlighting */
+        .textLayer {
+            position: absolute;
+            left: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            overflow: hidden;
+            opacity: 0.2;
+            line-height: 1.0;
+            -webkit-text-size-adjust: none;
+            -moz-text-size-adjust: none;
+            text-size-adjust: none;
+        }
+        .textLayer > span {
+            color: transparent;
+            position: absolute;
+            white-space: pre;
+            cursor: text;
+            transform-origin: 0% 0%;
+        }
+        .textLayer ::selection { background: rgba(0, 0, 255, 0.3); }
+        .textLayer .highlight {
+            margin: -1px;
+            padding: 1px;
+            background-color: rgba(251, 191, 36, 0.6);
+            border-radius: 2px;
+        }
+        .textLayer .highlight.selected { background-color: rgba(251, 146, 60, 0.8); }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d2d2d7; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a1a1a6; }
+    </style>
+</head>
+<body class="bg-apple-bg text-apple-text h-screen flex flex-col overflow-hidden">
+    <!-- Header -->
+    <header class="bg-white border-b border-apple-border px-6 py-3 flex-shrink-0">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="activity" class="w-5 h-5 text-apple-blue"></i>
+                    <span class="text-base font-semibold text-apple-text tracking-tight">RAG Observe</span>
+                    <span class="live-dot w-1.5 h-1.5 bg-apple-green rounded-full"></span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3 text-xs">
+                <!-- Back to Experiments button -->
+                <button onclick="exitToExperimentSelect()" class="flex items-center gap-1.5 text-apple-secondary hover:text-apple-text px-2 py-1.5 rounded hover:bg-apple-bg transition-colors">
+                    <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+                    Experiments
+                </button>
+                <span class="text-apple-border">|</span>
+                <!-- Current Experiment Display -->
+                <div class="flex items-center gap-2 bg-violet-50 text-violet-700 px-3 py-1.5 rounded-lg">
+                    <i data-lucide="flask-conical" class="w-3.5 h-3.5"></i>
+                    <span id="current-experiment-name" class="font-medium">Experiment</span>
+                </div>
+                <span class="text-apple-border">|</span>
+                <button onclick="clearData()" class="flex items-center gap-1.5 text-apple-secondary hover:text-apple-text px-3 py-1.5 rounded hover:bg-apple-bg transition-colors">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    Clear
+                </button>
+                <button onclick="refreshData()" class="flex items-center gap-1.5 bg-apple-text hover:bg-apple-text/80 text-white px-3 py-1.5 rounded font-medium transition-colors">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    Refresh
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Experiment Management Modal -->
+    <div id="experiment-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4">
+            <div class="px-6 py-4 border-b border-apple-border flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-apple-text">Manage Experiments</h2>
+                <button onclick="closeExperimentModal()" class="p-1 hover:bg-apple-bg rounded transition-colors">
+                    <i data-lucide="x" class="w-5 h-5 text-apple-secondary"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <button onclick="openCreateExperimentModal()" class="w-full flex items-center justify-center gap-2 bg-apple-blue hover:bg-apple-blue/90 text-white px-4 py-2.5 rounded-lg font-medium transition-colors mb-4">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    Create New Experiment
+                </button>
+                <div id="experiment-modal-list" class="space-y-3 max-h-80 overflow-y-auto">
+                    <!-- Experiment cards will be listed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Experiment Modal -->
+    <div id="create-experiment-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div class="px-6 py-4 border-b border-apple-border flex items-center justify-between">
+                <h2 id="create-experiment-title" class="text-lg font-semibold text-apple-text">Create Experiment</h2>
+                <button onclick="closeCreateExperimentModal()" class="p-1 hover:bg-apple-bg rounded transition-colors">
+                    <i data-lucide="x" class="w-5 h-5 text-apple-secondary"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <input type="hidden" id="edit-experiment-id" value="">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-apple-text mb-1">Name</label>
+                    <input type="text" id="experiment-name-input" placeholder="e.g., Chunking Strategy Test"
+                           class="w-full bg-white border border-apple-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-apple-blue/30">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-apple-text mb-1">Description (optional)</label>
+                    <textarea id="experiment-desc-input" placeholder="Describe the purpose of this experiment..."
+                              rows="3" class="w-full bg-white border border-apple-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-apple-blue/30"></textarea>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="closeCreateExperimentModal()" class="flex-1 px-4 py-2 border border-apple-border rounded-lg text-apple-secondary hover:bg-apple-bg transition-colors">
+                        Cancel
+                    </button>
+                    <button onclick="saveExperiment()" class="flex-1 bg-apple-blue hover:bg-apple-blue/90 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Experiment Selection Screen -->
+    <div id="experiment-select-screen" class="flex-1 flex items-center justify-center bg-apple-bg">
+        <div class="w-full max-w-2xl mx-4">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-violet-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="flask-conical" class="w-8 h-8 text-violet-600"></i>
+                </div>
+                <h1 class="text-2xl font-semibold text-apple-text mb-2">Select an Experiment</h1>
+                <p class="text-apple-secondary">Choose an experiment to view its data, or create a new one</p>
+            </div>
+
+            <div class="bg-white rounded-xl border border-apple-border shadow-sm overflow-hidden">
+                <div class="p-4 border-b border-apple-border flex gap-3">
+                    <button onclick="openCreateExperimentModal()" class="flex-1 flex items-center justify-center gap-2 bg-apple-blue hover:bg-apple-blue/90 text-white px-4 py-2.5 rounded-lg font-medium transition-colors">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        Create New Experiment
+                    </button>
+                    <button onclick="openExperimentModal()" class="flex items-center justify-center gap-2 bg-apple-bg hover:bg-apple-border/50 text-apple-secondary px-4 py-2.5 rounded-lg font-medium transition-colors">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                        Manage
+                    </button>
+                </div>
+                <div id="experiment-select-list" class="divide-y divide-apple-border max-h-96 overflow-y-auto">
+                    <!-- Experiments will be listed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard (hidden until experiment selected) -->
+    <div id="main-dashboard" class="hidden flex flex-1 overflow-hidden">
+        <!-- Sidebar Navigation -->
+        <aside class="w-48 bg-white border-r border-apple-border p-3 flex-shrink-0">
+            <nav class="space-y-0.5">
+                <button onclick="showTab('overview')" data-tab="overview" class="tab-btn w-full text-left px-3 py-2 rounded hover:bg-apple-bg bg-apple-bg text-sm font-medium transition-colors flex items-center gap-2">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4 text-apple-secondary"></i>
+                    Overview
+                </button>
+                <button onclick="showTab('documents')" data-tab="documents" class="tab-btn w-full text-left px-3 py-2 rounded hover:bg-apple-bg flex items-center gap-2 text-sm text-apple-secondary transition-colors">
+                    <i data-lucide="file-text" class="w-4 h-4"></i>
+                    <span>Documents</span>
+                    <span class="ml-auto text-xs text-apple-tertiary" id="nav-doc-count">0</span>
+                </button>
+                <button onclick="showTab('traces')" data-tab="traces" class="tab-btn w-full text-left px-3 py-2 rounded hover:bg-apple-bg flex items-center gap-2 text-sm text-apple-secondary transition-colors">
+                    <i data-lucide="message-square" class="w-4 h-4"></i>
+                    <span>Queries</span>
+                    <span class="ml-auto text-xs text-apple-tertiary" id="nav-trace-count">0</span>
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex overflow-hidden bg-apple-bg">
+            <!-- Overview Tab -->
+            <div id="tab-overview" class="tab-content flex-1 p-6 overflow-y-auto">
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm hover:shadow-md transition-shadow">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
+                                <i data-lucide="file-text" class="w-5 h-5 text-emerald-600"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-apple-text" id="stat-docs">0</p>
+                                <p class="text-xs text-apple-secondary">Documents</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm hover:shadow-md transition-shadow">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
+                                <i data-lucide="scissors" class="w-5 h-5 text-amber-600"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-apple-text" id="stat-chunks">0</p>
+                                <p class="text-xs text-apple-secondary">Chunks</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm hover:shadow-md transition-shadow">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+                                <i data-lucide="database" class="w-5 h-5 text-blue-600"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-apple-text" id="stat-emb">0</p>
+                                <p class="text-xs text-apple-secondary">Embeddings</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm hover:shadow-md transition-shadow">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-violet-50 rounded-lg flex items-center justify-center">
+                                <i data-lucide="search" class="w-5 h-5 text-violet-600"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-apple-text" id="stat-retrievals">0</p>
+                                <p class="text-xs text-apple-secondary">Retrievals</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm hover:shadow-md transition-shadow">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-sky-50 rounded-lg flex items-center justify-center">
+                                <i data-lucide="message-square" class="w-5 h-5 text-sky-600"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-apple-text" id="stat-traces">0</p>
+                                <p class="text-xs text-apple-secondary">Queries</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm hover:shadow-md transition-shadow">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-rose-50 rounded-lg flex items-center justify-center">
+                                <i data-lucide="sparkles" class="w-5 h-5 text-rose-600"></i>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-apple-text" id="stat-llm">0</p>
+                                <p class="text-xs text-apple-secondary">LLM Calls</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pipeline Flow -->
+                <div class="bg-white rounded-xl p-6 mb-6 border border-apple-border shadow-sm">
+                    <div class="flex items-center gap-2 mb-5">
+                        <i data-lucide="git-branch" class="w-4 h-4 text-apple-secondary"></i>
+                        <p class="text-sm font-medium text-apple-text">RAG Pipeline</p>
+                    </div>
+                    <div class="flex items-center justify-between py-2">
+                        <div class="flex flex-col items-center cursor-pointer hover:opacity-70 transition-opacity" onclick="showTab('documents')">
+                            <div class="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center mb-2 border border-emerald-100">
+                                <i data-lucide="file-text" class="w-6 h-6 text-emerald-600"></i>
+                            </div>
+                            <span class="text-sm font-medium text-apple-text">Documents</span>
+                            <span class="text-lg font-semibold text-apple-text" id="flow-docs">0</span>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-apple-tertiary"></i>
+                        <div class="flex flex-col items-center cursor-pointer hover:opacity-70 transition-opacity" onclick="showTab('documents')">
+                            <div class="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center mb-2 border border-amber-100">
+                                <i data-lucide="scissors" class="w-6 h-6 text-amber-600"></i>
+                            </div>
+                            <span class="text-sm font-medium text-apple-text">Chunks</span>
+                            <span class="text-lg font-semibold text-apple-text" id="flow-chunks">0</span>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-apple-tertiary"></i>
+                        <div class="flex flex-col items-center">
+                            <div class="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-2 border border-blue-100">
+                                <i data-lucide="database" class="w-6 h-6 text-blue-600"></i>
+                            </div>
+                            <span class="text-sm font-medium text-apple-text">Embeddings</span>
+                            <span class="text-lg font-semibold text-apple-text" id="flow-emb">0</span>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-apple-tertiary"></i>
+                        <div class="flex flex-col items-center cursor-pointer hover:opacity-70 transition-opacity" onclick="showTab('traces')">
+                            <div class="w-12 h-12 bg-violet-50 rounded-xl flex items-center justify-center mb-2 border border-violet-100">
+                                <i data-lucide="search" class="w-6 h-6 text-violet-600"></i>
+                            </div>
+                            <span class="text-sm font-medium text-apple-text">Retrieval</span>
+                            <span class="text-lg font-semibold text-apple-text" id="flow-ret">0</span>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-apple-tertiary"></i>
+                        <div class="flex flex-col items-center cursor-pointer hover:opacity-70 transition-opacity" onclick="showTab('traces')">
+                            <div class="w-12 h-12 bg-rose-50 rounded-xl flex items-center justify-center mb-2 border border-rose-100">
+                                <i data-lucide="sparkles" class="w-6 h-6 text-rose-600"></i>
+                            </div>
+                            <span class="text-sm font-medium text-apple-text">LLM</span>
+                            <span class="text-lg font-semibold text-apple-text" id="flow-llm">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-xl p-5 border border-apple-border shadow-sm">
+                        <div class="flex items-center gap-2 mb-4">
+                            <i data-lucide="clock" class="w-4 h-4 text-apple-secondary"></i>
+                            <p class="text-sm font-medium text-apple-text">Recent Documents</p>
+                        </div>
+                        <div id="recent-docs" class="space-y-2 max-h-64 overflow-y-auto">
+                            <div class="flex flex-col items-center justify-center py-6 text-apple-tertiary">
+                                <i data-lucide="file-plus" class="w-8 h-8 mb-2 opacity-50"></i>
+                                <p class="text-sm">No documents yet</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-5 border border-apple-border shadow-sm">
+                        <div class="flex items-center gap-2 mb-4">
+                            <i data-lucide="clock" class="w-4 h-4 text-apple-secondary"></i>
+                            <p class="text-sm font-medium text-apple-text">Recent Queries</p>
+                        </div>
+                        <div id="recent-retrievals" class="space-y-2 max-h-64 overflow-y-auto">
+                            <div class="flex flex-col items-center justify-center py-6 text-apple-tertiary">
+                                <i data-lucide="search" class="w-8 h-8 mb-2 opacity-50"></i>
+                                <p class="text-sm">No queries yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documents Tab -->
+            <div id="tab-documents" class="tab-content hidden flex-1 flex overflow-hidden">
+                <!-- Document List View (shown when no doc selected) -->
+                <div id="doc-list-view" class="flex-1 flex flex-col overflow-hidden bg-white">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-apple-border">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="folder" class="w-5 h-5 text-apple-secondary"></i>
+                            <span class="text-sm font-medium text-apple-text">Documents</span>
+                        </div>
+                        <div class="flex items-center gap-3 text-xs text-apple-secondary">
+                            <span id="doc-count-label">0 documents</span>
+                            <span class="text-apple-border">·</span>
+                            <span id="chunk-count-label">0 chunks</span>
+                        </div>
+                    </div>
+                    <div id="documents-list" class="flex-1 overflow-y-auto">
+                        <div class="flex flex-col items-center justify-center py-16 text-apple-tertiary">
+                            <i data-lucide="folder-open" class="w-12 h-12 mb-3 opacity-40"></i>
+                            <p class="text-sm">No documents yet</p>
+                            <p class="text-xs mt-1 opacity-70">Upload documents to start indexing</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Simple Document Viewer (no chunks panel) -->
+                <div id="doc-viewer-simple" class="hidden flex-1 flex flex-col overflow-hidden bg-white">
+                    <div class="px-4 py-3 border-b border-apple-border bg-white flex items-center gap-4">
+                        <button onclick="closeDocumentViewer()" class="flex items-center gap-1.5 text-xs text-apple-secondary hover:text-apple-text transition-colors">
+                            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+                            Back
+                        </button>
+                        <div class="flex-1">
+                            <span id="doc-viewer-title-simple" class="text-sm font-medium text-apple-text"></span>
+                            <span id="doc-viewer-subtitle-simple" class="text-xs text-apple-secondary ml-2"></span>
+                        </div>
+                        <button onclick="showChunksPanel()" class="flex items-center gap-1.5 text-xs bg-apple-bg hover:bg-apple-border/50 text-apple-text px-3 py-1.5 rounded-lg transition-colors">
+                            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                            Show Chunks
+                        </button>
+                        <a id="doc-download-btn-simple" href="#" download class="flex items-center gap-1.5 text-xs text-apple-secondary hover:text-apple-text transition-colors">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                            Download
+                        </a>
+                    </div>
+                    <!-- View mode toggle -->
+                    <div class="flex items-center gap-2 px-4 py-2 border-b border-apple-border bg-apple-bg/30">
+                        <span class="text-xs text-apple-secondary">View:</span>
+                        <button onclick="setSimpleViewMode('split')" id="simple-mode-split" class="simple-mode-btn text-xs px-3 py-1 rounded-md bg-apple-blue text-white font-medium">Split</button>
+                        <button onclick="setSimpleViewMode('pdf')" id="simple-mode-pdf" class="simple-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">PDF</button>
+                        <button onclick="setSimpleViewMode('parsed')" id="simple-mode-parsed" class="simple-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">Parsed</button>
+                    </div>
+                    <div id="doc-simple-content" class="flex-1 flex overflow-hidden bg-apple-bg/50"></div>
+                </div>
+
+                <!-- Chunk Origin Viewer (with chunks panel - for tracing chunk sources) -->
+                <div id="doc-viewer-chunks" class="hidden flex-1 flex flex-col overflow-hidden bg-white">
+                    <div class="px-4 py-3 border-b border-apple-border bg-white flex items-center gap-4">
+                        <button onclick="closeDocumentViewer()" class="flex items-center gap-1.5 text-xs text-apple-secondary hover:text-apple-text transition-colors">
+                            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+                            Back
+                        </button>
+                        <div class="flex-1">
+                            <span id="doc-viewer-title-chunks" class="text-sm font-medium text-apple-text"></span>
+                        </div>
+                        <button onclick="hideChunksPanel()" class="flex items-center gap-1.5 text-xs bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-1.5 rounded-lg transition-colors">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            Hide Chunks
+                        </button>
+                        <span id="page-indicator" class="text-xs text-apple-secondary"></span>
+                        <a id="doc-download-btn-chunks" href="#" download class="flex items-center gap-1.5 text-xs text-apple-secondary hover:text-apple-text transition-colors">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                            Download
+                        </a>
+                    </div>
+                    <div class="flex-1 flex overflow-hidden">
+                        <!-- Chunks list -->
+                        <div class="w-72 border-r border-apple-border flex flex-col flex-shrink-0 bg-apple-bg/30">
+                            <div class="p-3 border-b border-apple-border">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="layers" class="w-4 h-4 text-amber-600"></i>
+                                        <h3 class="font-medium text-sm text-apple-text">Chunks</h3>
+                                    </div>
+                                    <span id="chunks-panel-count" class="text-xs text-apple-secondary"></span>
+                                </div>
+                                <div class="relative">
+                                    <i data-lucide="search" class="w-3.5 h-3.5 text-apple-tertiary absolute left-2.5 top-1/2 -translate-y-1/2"></i>
+                                    <input type="text" id="doc-chunk-search" placeholder="Search chunks..."
+                                           class="bg-white border border-apple-border rounded-lg pl-8 pr-3 py-1.5 w-full text-xs focus:outline-none focus:ring-2 focus:ring-apple-blue/30"
+                                           oninput="filterDocChunks()">
+                                </div>
+                            </div>
+                            <div id="doc-chunks-list" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+                        </div>
+                        <!-- Source view -->
+                        <div class="flex-1 flex flex-col overflow-hidden">
+                            <div class="flex items-center gap-2 px-4 py-2 border-b border-apple-border bg-apple-bg/30">
+                                <span class="text-xs text-apple-secondary">View:</span>
+                                <button onclick="setDocViewMode('split')" id="view-mode-split" class="view-mode-btn text-xs px-3 py-1 rounded-md bg-apple-blue text-white font-medium">Split</button>
+                                <button onclick="setDocViewMode('pdf')" id="view-mode-pdf" class="view-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">PDF</button>
+                                <button onclick="setDocViewMode('parsed')" id="view-mode-parsed" class="view-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">Parsed</button>
+                            </div>
+                            <div id="doc-source-content" class="flex-1 flex overflow-hidden bg-apple-bg/50"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Queries Tab -->
+            <div id="tab-traces" class="tab-content hidden flex-1 flex overflow-hidden">
+                <!-- Queries List View -->
+                <div id="requests-list-view" class="flex-1 flex flex-col overflow-hidden bg-white">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-apple-border">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="message-circle" class="w-5 h-5 text-apple-secondary"></i>
+                            <span class="text-sm font-medium text-apple-text">Queries</span>
+                        </div>
+                        <span class="text-apple-secondary text-xs" id="requests-count-label">0 queries</span>
+                    </div>
+                    <div id="requests-list" class="flex-1 overflow-y-auto">
+                        <div class="flex flex-col items-center justify-center py-16 text-apple-tertiary">
+                            <i data-lucide="message-circle" class="w-12 h-12 mb-3 opacity-40"></i>
+                            <p class="text-sm">No queries yet</p>
+                            <p class="text-xs mt-1 opacity-70">Run queries to see them here</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Query Detail View -->
+                <div id="request-detail-view" class="hidden flex-1 flex overflow-hidden">
+                    <!-- Main content -->
+                    <div class="flex-1 flex flex-col overflow-hidden bg-white">
+                        <div class="px-4 py-3 border-b border-apple-border bg-white flex items-center gap-4">
+                            <button onclick="closeRequestDetail()" class="flex items-center gap-1.5 text-xs text-apple-secondary hover:text-apple-text transition-colors">
+                                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+                                Back
+                            </button>
+                            <div class="flex-1 min-w-0">
+                                <span id="request-detail-name" class="text-sm font-medium text-apple-text truncate block"></span>
+                                <span id="request-detail-title" class="text-xs text-apple-tertiary"></span>
+                            </div>
+                        </div>
+                        <div id="request-detail-content" class="flex-1 overflow-y-auto">
+                        </div>
+                    </div>
+                    <!-- Source Sidebar (hidden by default) - Shows parsed text or original PDF for RAG debugging -->
+                    <div id="source-sidebar" class="hidden w-[650px] border-l border-apple-border flex flex-col bg-white flex-shrink-0">
+                        <div class="px-4 py-3 border-b border-apple-border bg-white flex items-center gap-3">
+                            <i data-lucide="file-text" class="w-4 h-4 text-apple-secondary flex-shrink-0"></i>
+                            <div class="flex-1 min-w-0">
+                                <p id="source-sidebar-title" class="text-sm font-medium text-apple-text truncate"></p>
+                            </div>
+                            <button onclick="openFullDocumentView()" class="flex items-center gap-1 text-xs text-apple-blue hover:underline flex-shrink-0">
+                                <i data-lucide="external-link" class="w-3 h-3"></i>
+                                Full View
+                            </button>
+                            <button onclick="closeSourceSidebar()" class="p-1 hover:bg-apple-bg rounded text-apple-secondary hover:text-apple-text flex-shrink-0 transition-colors">
+                                <i data-lucide="x" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                        <div class="px-4 py-2 border-b border-apple-border bg-apple-bg/30 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <button onclick="setSidebarViewMode('parsed')" id="sidebar-mode-parsed" class="sidebar-mode-btn text-xs px-3 py-1 rounded-md bg-apple-blue text-white font-medium">Parsed</button>
+                                <button onclick="setSidebarViewMode('source')" id="sidebar-mode-source" class="sidebar-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">Source</button>
+                                <span class="text-apple-border mx-1">|</span>
+                                <div class="flex items-center gap-1">
+                                    <button onclick="sidebarGoToPage(sidebarPage - 1)" id="sidebar-prev" class="p-1 hover:bg-black/5 rounded transition-colors">
+                                        <i data-lucide="chevron-left" class="w-4 h-4 text-apple-secondary"></i>
+                                    </button>
+                                    <span id="source-sidebar-page" class="text-xs text-apple-secondary"></span>
+                                    <button onclick="sidebarGoToPage(sidebarPage + 1)" id="sidebar-next" class="p-1 hover:bg-black/5 rounded transition-colors">
+                                        <i data-lucide="chevron-right" class="w-4 h-4 text-apple-secondary"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <span id="sidebar-highlight-badge" class="hidden bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">Highlighted</span>
+                        </div>
+                        <div id="source-sidebar-content" class="flex-1 flex flex-col overflow-hidden bg-apple-bg/30">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div> <!-- End main-dashboard -->
+
+    <script>
+        let allData = {};
+        let autoRefresh = null;
+        let selectedDoc = null;
+        let selectedTrace = null;
+        let currentExperimentId = null; // null = all data
+
+        // PDF.js configuration
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // PDF viewer state
+        let pdfDocCache = {}; // Cache loaded PDF documents
+        let currentPdfDoc = null;
+        let pdfScale = 1.2;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            lucide.createIcons();
+            await initializeExperiments();
+        });
+
+        async function initializeExperiments() {
+            // Load experiments list
+            const res = await fetch('/api/experiments');
+            const experiments = await res.json();
+
+            // Create "Default" experiment if no experiments exist
+            if (experiments.length === 0) {
+                await fetch('/api/experiments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: 'Default', description: 'Default experiment for general use' })
+                });
+                // Reload experiments
+                const res2 = await fetch('/api/experiments');
+                allData.experiments = await res2.json();
+            } else {
+                allData.experiments = experiments;
+            }
+
+            // Render experiment selection list
+            updateExperimentSelectList();
+        }
+
+        function updateExperimentSelectList() {
+            const experiments = allData.experiments || [];
+            const listEl = document.getElementById('experiment-select-list');
+
+            if (!experiments.length) {
+                listEl.innerHTML = `
+                    <div class="p-8 text-center text-apple-secondary">
+                        <p>No experiments yet. Create one to get started!</p>
+                    </div>
+                `;
+            } else {
+                listEl.innerHTML = experiments.map(exp => `
+                    <button onclick="enterExperiment(${exp.id})" class="w-full text-left px-4 py-4 hover:bg-apple-bg transition-colors flex items-center gap-4">
+                        <div class="w-10 h-10 ${exp.name === 'Default' ? 'bg-gray-100' : 'bg-violet-50'} rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="${exp.name === 'Default' ? 'inbox' : 'flask-conical'}" class="w-5 h-5 ${exp.name === 'Default' ? 'text-gray-600' : 'text-violet-600'}"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-medium text-apple-text">${escapeHtml(exp.name)}</h3>
+                            ${exp.description ? `<p class="text-sm text-apple-secondary truncate">${escapeHtml(exp.description)}</p>` : ''}
+                            <div class="flex items-center gap-3 mt-1 text-xs text-apple-tertiary">
+                                <span>${exp.doc_count || 0} docs</span>
+                                <span>${exp.retrieval_count || 0} queries</span>
+                                <span>${exp.llm_count || 0} LLM calls</span>
+                            </div>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-apple-tertiary flex-shrink-0"></i>
+                    </button>
+                `).join('');
+            }
+            lucide.createIcons();
+        }
+
+        function enterExperiment(expId) {
+            currentExperimentId = expId;
+            const exp = (allData.experiments || []).find(e => e.id === expId);
+            document.getElementById('current-experiment-name').textContent = exp?.name || 'Experiment';
+
+            // Hide experiment selection, show dashboard
+            document.getElementById('experiment-select-screen').classList.add('hidden');
+            document.getElementById('main-dashboard').classList.remove('hidden');
+
+            // Start data refresh
+            refreshData();
+            autoRefresh = setInterval(refreshData, 3000);
+        }
+
+        function exitToExperimentSelect() {
+            // Stop auto-refresh
+            if (autoRefresh) {
+                clearInterval(autoRefresh);
+                autoRefresh = null;
+            }
+
+            currentExperimentId = null;
+
+            // Show experiment selection, hide dashboard
+            document.getElementById('experiment-select-screen').classList.remove('hidden');
+            document.getElementById('main-dashboard').classList.add('hidden');
+
+            // Refresh experiment list
+            initializeExperiments();
+        }
+
+        // ========== PDF.js Viewer ==========
+        async function loadPdfDocument(url) {
+            if (pdfDocCache[url]) {
+                return pdfDocCache[url];
+            }
+            try {
+                const loadingTask = pdfjsLib.getDocument(url);
+                const pdfDoc = await loadingTask.promise;
+                pdfDocCache[url] = pdfDoc;
+                return pdfDoc;
+            } catch (e) {
+                console.error('Error loading PDF:', e);
+                return null;
+            }
+        }
+
+        async function renderPdfPage(pdfDoc, pageNum, container, highlightText = null) {
+            try {
+                const page = await pdfDoc.getPage(pageNum);
+                const viewport = page.getViewport({ scale: pdfScale });
+
+                // Create wrapper
+                const wrapper = document.createElement('div');
+                wrapper.className = 'pdf-page-wrapper';
+                wrapper.style.width = viewport.width + 'px';
+                wrapper.style.height = viewport.height + 'px';
+
+                // Create canvas
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                // Render PDF page to canvas
+                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                wrapper.appendChild(canvas);
+
+                // Create text layer for selection/highlighting
+                const textContent = await page.getTextContent();
+                const textLayer = document.createElement('div');
+                textLayer.className = 'textLayer';
+                textLayer.style.width = viewport.width + 'px';
+                textLayer.style.height = viewport.height + 'px';
+
+                // Render text layer
+                await renderTextLayer(textContent, textLayer, viewport, highlightText);
+
+                wrapper.appendChild(textLayer);
+                container.appendChild(wrapper);
+
+                return { wrapper, textLayer };
+            } catch (e) {
+                console.error('Error rendering PDF page:', e);
+                return null;
+            }
+        }
+
+        async function renderTextLayer(textContent, textLayerDiv, viewport, highlightText = null) {
+            const textItems = textContent.items;
+            const styles = textContent.styles;
+
+            // Normalize highlight text for matching
+            const normalizedHighlight = highlightText ? normalizeText(highlightText) : null;
+
+            for (const item of textItems) {
+                const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+                const fontHeight = Math.sqrt((tx[2] * tx[2]) + (tx[3] * tx[3]));
+                const angle = Math.atan2(tx[1], tx[0]);
+
+                const span = document.createElement('span');
+                span.textContent = item.str;
+                span.style.left = tx[4] + 'px';
+                span.style.top = (tx[5] - fontHeight) + 'px';
+                span.style.fontSize = fontHeight + 'px';
+                span.style.fontFamily = styles[item.fontName]?.fontFamily || 'sans-serif';
+
+                if (angle !== 0) {
+                    span.style.transform = `rotate(${angle}rad)`;
+                }
+
+                // Check if this text should be highlighted
+                if (normalizedHighlight && item.str.trim()) {
+                    const normalizedItem = normalizeText(item.str);
+                    if (normalizedHighlight.includes(normalizedItem) || normalizedItem.includes(normalizedHighlight.substring(0, 30))) {
+                        span.classList.add('highlight');
+                    }
+                }
+
+                textLayerDiv.appendChild(span);
+            }
+        }
+
+        function normalizeText(text) {
+            return text.toLowerCase().replace(/\s+/g, ' ').trim();
+        }
+
+        async function renderPdfViewer(containerId, pdfUrl, pageNum = 1, highlightText = null, showAllPages = false) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            container.innerHTML = '<div class="flex items-center justify-center h-full text-white"><i data-lucide="loader-2" class="w-6 h-6 animate-spin mr-2"></i>Loading PDF...</div>';
+            lucide.createIcons();
+
+            const pdfDoc = await loadPdfDocument(pdfUrl);
+            if (!pdfDoc) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-apple-secondary"><p>Could not load PDF</p></div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            container.className = 'pdf-container flex-1 flex flex-col min-h-0';
+
+            // Add zoom controls bar
+            const controlsBar = document.createElement('div');
+            controlsBar.className = 'flex items-center justify-center gap-2 px-2 py-1.5 bg-gray-700 flex-shrink-0';
+            controlsBar.innerHTML = `
+                <button onclick="adjustPdfZoom('${containerId}', '${pdfUrl}', ${pageNum}, ${highlightText ? `'${escapeForJs(highlightText)}'` : 'null'}, ${showAllPages}, -0.2)" class="p-1 hover:bg-gray-600 rounded text-white" title="Zoom Out">
+                    <i data-lucide="zoom-out" class="w-4 h-4"></i>
+                </button>
+                <span class="text-white text-xs min-w-[50px] text-center">${Math.round(pdfScale * 100)}%</span>
+                <button onclick="adjustPdfZoom('${containerId}', '${pdfUrl}', ${pageNum}, ${highlightText ? `'${escapeForJs(highlightText)}'` : 'null'}, ${showAllPages}, 0.2)" class="p-1 hover:bg-gray-600 rounded text-white" title="Zoom In">
+                    <i data-lucide="zoom-in" class="w-4 h-4"></i>
+                </button>
+                <span class="text-gray-400 mx-2">|</span>
+                <button onclick="pdfScale = 1.0; renderPdfViewer('${containerId}', '${pdfUrl}', ${pageNum}, ${highlightText ? `'${escapeForJs(highlightText)}'` : 'null'}, ${showAllPages})" class="text-xs text-gray-300 hover:text-white px-2 py-0.5 hover:bg-gray-600 rounded" title="Reset Zoom">
+                    Reset
+                </button>
+            `;
+            container.appendChild(controlsBar);
+            lucide.createIcons();
+
+            // Create scroll container for pages
+            const scrollContainer = document.createElement('div');
+            scrollContainer.className = 'flex-1 overflow-auto p-4 min-h-0';
+            scrollContainer.id = containerId + '-scroll';
+            container.appendChild(scrollContainer);
+
+            if (showAllPages) {
+                // Render all pages
+                for (let i = 1; i <= pdfDoc.numPages; i++) {
+                    await renderPdfPage(pdfDoc, i, scrollContainer, i === pageNum ? highlightText : null);
+                }
+            } else {
+                // Render single page
+                await renderPdfPage(pdfDoc, pageNum, scrollContainer, highlightText);
+            }
+
+            // Scroll to first highlight if present
+            setTimeout(() => {
+                const firstHighlight = scrollContainer.querySelector('.textLayer .highlight');
+                if (firstHighlight) {
+                    firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+        }
+
+        function adjustPdfZoom(containerId, pdfUrl, pageNum, highlightText, showAllPages, delta) {
+            pdfScale = Math.max(0.5, Math.min(3.0, pdfScale + delta));
+            renderPdfViewer(containerId, pdfUrl, pageNum, highlightText, showAllPages);
+        }
+
+
+        // Enhanced highlight function that searches across text spans
+        function highlightTextInPdf(container, searchText) {
+            if (!searchText || !container) return;
+
+            const normalizedSearch = normalizeText(searchText).substring(0, 100); // Use first 100 chars
+            const spans = container.querySelectorAll('.textLayer span');
+
+            // Build continuous text and map positions
+            let fullText = '';
+            const spanMap = [];
+
+            spans.forEach((span, idx) => {
+                const start = fullText.length;
+                fullText += span.textContent;
+                spanMap.push({ span, start, end: fullText.length });
+            });
+
+            const normalizedFull = normalizeText(fullText);
+            const matchIdx = normalizedFull.indexOf(normalizedSearch.substring(0, 50));
+
+            if (matchIdx !== -1) {
+                // Find which spans contain the match
+                const matchEnd = matchIdx + Math.min(searchText.length, 200);
+
+                spanMap.forEach(({ span, start, end }) => {
+                    // Rough position mapping (normalized vs original may differ)
+                    const ratio = fullText.length / normalizedFull.length;
+                    const origStart = start;
+                    const origEnd = end;
+                    const normStart = origStart / ratio;
+                    const normEnd = origEnd / ratio;
+
+                    if (normEnd > matchIdx && normStart < matchEnd) {
+                        span.classList.add('highlight');
+                    }
+                });
+            }
+        }
+
+        async function refreshData() {
+            if (!currentExperimentId) return; // Require experiment to be selected
+
+            try {
+                const url = `/api/data?experiment_id=${currentExperimentId}`;
+                const res = await fetch(url);
+                allData = await res.json();
+                updateUI();
+            } catch (e) {
+                console.error('Error:', e);
+            }
+        }
+
+        // ========== Experiment Management ==========
+
+        function updateExperimentModalList() {
+            const experiments = allData.experiments || [];
+            const listEl = document.getElementById('experiment-modal-list');
+
+            if (!experiments.length) {
+                listEl.innerHTML = '<p class="text-apple-secondary text-sm text-center py-8">No experiments yet. Create one to get started!</p>';
+            } else {
+                listEl.innerHTML = experiments.map(exp => `
+                    <div class="bg-apple-bg rounded-lg p-4">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="flask-conical" class="w-4 h-4 text-violet-600 flex-shrink-0"></i>
+                                    <h3 class="font-medium text-apple-text truncate">${escapeHtml(exp.name)}</h3>
+                                </div>
+                                ${exp.description ? `<p class="text-sm text-apple-secondary mt-1 line-clamp-2">${escapeHtml(exp.description)}</p>` : ''}
+                                <div class="flex items-center gap-3 mt-2 text-xs text-apple-tertiary">
+                                    <span>${exp.doc_count || 0} docs</span>
+                                    <span>${exp.retrieval_count || 0} queries</span>
+                                    <span>${exp.llm_count || 0} LLM calls</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1 ml-2">
+                                <button onclick="editExperiment(${exp.id})" class="p-1.5 hover:bg-white rounded transition-colors" title="Edit">
+                                    <i data-lucide="pencil" class="w-4 h-4 text-apple-secondary"></i>
+                                </button>
+                                <button onclick="deleteExperiment(${exp.id})" class="p-1.5 hover:bg-white rounded transition-colors" title="Delete">
+                                    <i data-lucide="trash-2" class="w-4 h-4 text-red-500"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+            lucide.createIcons();
+        }
+
+        function openExperimentModal() {
+            document.getElementById('experiment-modal').classList.remove('hidden');
+            updateExperimentModalList();
+            lucide.createIcons();
+        }
+
+        function closeExperimentModal() {
+            document.getElementById('experiment-modal').classList.add('hidden');
+        }
+
+        function openCreateExperimentModal(expId = null) {
+            document.getElementById('edit-experiment-id').value = expId || '';
+            document.getElementById('experiment-name-input').value = '';
+            document.getElementById('experiment-desc-input').value = '';
+
+            if (expId) {
+                const exp = (allData.experiments || []).find(e => e.id === expId);
+                if (exp) {
+                    document.getElementById('experiment-name-input').value = exp.name || '';
+                    document.getElementById('experiment-desc-input').value = exp.description || '';
+                }
+                document.getElementById('create-experiment-title').textContent = 'Edit Experiment';
+            } else {
+                document.getElementById('create-experiment-title').textContent = 'Create Experiment';
+            }
+
+            document.getElementById('create-experiment-modal').classList.remove('hidden');
+            document.getElementById('experiment-name-input').focus();
+            lucide.createIcons();
+        }
+
+        function closeCreateExperimentModal() {
+            document.getElementById('create-experiment-modal').classList.add('hidden');
+        }
+
+        async function saveExperiment() {
+            const expId = document.getElementById('edit-experiment-id').value;
+            const name = document.getElementById('experiment-name-input').value.trim();
+            const description = document.getElementById('experiment-desc-input').value.trim();
+
+            if (!name) {
+                alert('Please enter an experiment name');
+                return;
+            }
+
+            try {
+                if (expId) {
+                    // Update existing
+                    await fetch(`/api/experiments/${expId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, description })
+                    });
+                } else {
+                    // Create new
+                    await fetch('/api/experiments', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, description })
+                    });
+                }
+
+                closeCreateExperimentModal();
+
+                // Refresh experiments list
+                const res = await fetch('/api/experiments');
+                allData.experiments = await res.json();
+
+                // Update both selection screen and modal list
+                updateExperimentSelectList();
+                updateExperimentModalList();
+
+                // If inside dashboard, also refresh data
+                if (currentExperimentId) {
+                    refreshData();
+                }
+            } catch (e) {
+                console.error('Error saving experiment:', e);
+                alert('Failed to save experiment');
+            }
+        }
+
+        function editExperiment(expId) {
+            openCreateExperimentModal(expId);
+        }
+
+        async function deleteExperiment(expId) {
+            const exp = (allData.experiments || []).find(e => e.id === expId);
+            if (!confirm(`Delete experiment "${exp?.name}"? Data will be unassigned but not deleted.`)) {
+                return;
+            }
+
+            try {
+                await fetch(`/api/experiments/${expId}`, { method: 'DELETE' });
+
+                // Refresh experiments list
+                const res = await fetch('/api/experiments');
+                allData.experiments = await res.json();
+
+                // Update both selection screen and modal list
+                updateExperimentSelectList();
+                updateExperimentModalList();
+
+                // If we were viewing this experiment, go back to selection
+                if (currentExperimentId === expId) {
+                    exitToExperimentSelect();
+                }
+            } catch (e) {
+                console.error('Error deleting experiment:', e);
+                alert('Failed to delete experiment');
+            }
+        }
+
+        async function assignToExperiment(expId, docIds = [], retrievalIds = [], llmIds = []) {
+            try {
+                await fetch(`/api/experiments/${expId}/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ doc_ids: docIds, retrieval_ids: retrievalIds, llm_ids: llmIds })
+                });
+                refreshData();
+            } catch (e) {
+                console.error('Error assigning to experiment:', e);
+            }
+        }
+
+        async function unassignFromExperiment(docIds = [], retrievalIds = [], llmIds = []) {
+            try {
+                await fetch(`/api/experiments/0/unassign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ doc_ids: docIds, retrieval_ids: retrievalIds, llm_ids: llmIds })
+                });
+                refreshData();
+            } catch (e) {
+                console.error('Error unassigning from experiment:', e);
+            }
+        }
+
+        function getExperimentName(expId) {
+            const exp = (allData.experiments || []).find(e => e.id === expId);
+            return exp ? exp.name : null;
+        }
+
+        function showAssignMenu(event, type, id, currentExpId) {
+            event.stopPropagation();
+            // Remove any existing menu
+            const existing = document.getElementById('assign-menu');
+            if (existing) existing.remove();
+
+            const experiments = allData.experiments || [];
+            const menu = document.createElement('div');
+            menu.id = 'assign-menu';
+            menu.className = 'fixed bg-white border border-apple-border rounded-lg shadow-lg z-50 py-1 min-w-48';
+            menu.style.left = event.clientX + 'px';
+            menu.style.top = event.clientY + 'px';
+
+            let html = '<div class="px-3 py-1.5 text-xs font-medium text-apple-secondary">Assign to Experiment</div>';
+
+            if (currentExpId) {
+                html += `<button onclick="handleAssign('${type}', '${id}', null)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-apple-bg flex items-center gap-2 text-red-600">
+                    <i data-lucide="x" class="w-3 h-3"></i> Unassign
+                </button>`;
+                html += '<div class="border-t border-apple-border/50 my-1"></div>';
+            }
+
+            if (experiments.length === 0) {
+                html += '<div class="px-3 py-2 text-sm text-apple-tertiary">No experiments yet</div>';
+            } else {
+                experiments.forEach(exp => {
+                    const isSelected = exp.id === currentExpId;
+                    html += `<button onclick="handleAssign('${type}', '${id}', ${exp.id})" class="w-full text-left px-3 py-1.5 text-sm hover:bg-apple-bg flex items-center gap-2 ${isSelected ? 'bg-apple-bg' : ''}">
+                        <i data-lucide="${isSelected ? 'check' : 'folder'}" class="w-3 h-3"></i>
+                        ${escapeHtml(exp.name)}
+                    </button>`;
+                });
+            }
+
+            html += '<div class="border-t border-apple-border/50 my-1"></div>';
+            html += `<button onclick="openCreateExperimentModal(); document.getElementById('assign-menu')?.remove();" class="w-full text-left px-3 py-1.5 text-sm hover:bg-apple-bg flex items-center gap-2 text-apple-secondary">
+                <i data-lucide="plus" class="w-3 h-3"></i> New Experiment
+            </button>`;
+
+            menu.innerHTML = html;
+            document.body.appendChild(menu);
+            lucide.createIcons();
+
+            // Close on click outside
+            setTimeout(() => {
+                document.addEventListener('click', function closeMenu(e) {
+                    if (!menu.contains(e.target)) {
+                        menu.remove();
+                        document.removeEventListener('click', closeMenu);
+                    }
+                });
+            }, 0);
+        }
+
+        async function handleAssign(type, id, expId) {
+            document.getElementById('assign-menu')?.remove();
+            if (expId === null) {
+                // Unassign
+                if (type === 'doc') {
+                    await unassignFromExperiment([id], [], []);
+                } else if (type === 'retrieval') {
+                    await unassignFromExperiment([], [parseInt(id)], []);
+                }
+            } else {
+                // Assign
+                if (type === 'doc') {
+                    await assignToExperiment(expId, [id], [], []);
+                } else if (type === 'retrieval') {
+                    await assignToExperiment(expId, [], [parseInt(id)], []);
+                }
+            }
+        }
+
+        async function clearData() {
+            const msg = currentExperimentId
+                ? 'Clear data for this experiment? (Data will be unassigned)'
+                : 'Clear all trace data?';
+            if (confirm(msg)) {
+                const url = currentExperimentId
+                    ? `/api/clear?experiment_id=${currentExperimentId}`
+                    : '/api/clear';
+                await fetch(url, { method: 'POST' });
+                selectedDoc = null;
+                selectedChunkInDoc = null;
+                selectedTrace = null;
+                refreshData();
+            }
+        }
+
+        function updateUI() {
+            const s = allData.stats || {};
+
+            // Stats
+            document.getElementById('stat-docs').textContent = s.total_documents || 0;
+            document.getElementById('stat-chunks').textContent = s.total_chunks || 0;
+            document.getElementById('stat-emb').textContent = s.total_embeddings || 0;
+            document.getElementById('stat-retrievals').textContent = s.total_retrievals || 0;
+            document.getElementById('stat-traces').textContent = s.total_traces || 0;
+            document.getElementById('stat-llm').textContent = s.total_llm_calls || 0;
+
+            // Nav counts
+            document.getElementById('nav-doc-count').textContent = s.total_documents || 0;
+            // Show retrievals count for Requests tab (more meaningful than traces)
+            document.getElementById('nav-trace-count').textContent = s.total_retrievals || s.total_traces || 0;
+
+            // Flow
+            document.getElementById('flow-docs').textContent = s.total_documents || 0;
+            document.getElementById('flow-chunks').textContent = s.total_chunks || 0;
+            document.getElementById('flow-emb').textContent = s.total_embeddings || 0;
+            document.getElementById('flow-ret').textContent = s.total_retrievals || 0;
+            document.getElementById('flow-llm').textContent = s.total_llm_calls || 0;
+
+            updateDocumentsList();
+            updateTracesList();
+            updateRecentActivity();
+        }
+
+        // ========== Documents ==========
+        let docViewMode = 'split'; // 'split', 'pdf', 'parsed'
+        let selectedChunkInDoc = null;
+        let simpleViewMode = 'split';
+        let currentPage = 1;
+        let highlightChunkText = null; // Text to highlight in parsed view
+
+        // Pagination state for different lists
+        const PAGE_SIZE = 20;
+        let docsPage = 1;
+        let queriesPage = 1;
+        let docChunksPage = 1;
+
+        // Pagination helper - renders pagination controls
+        function renderPagination(totalItems, currentPage, pageSize, onPageChange) {
+            const totalPages = Math.ceil(totalItems / pageSize);
+            if (totalPages <= 1) return '';
+
+            const startItem = (currentPage - 1) * pageSize + 1;
+            const endItem = Math.min(currentPage * pageSize, totalItems);
+
+            return `
+                <div class="flex items-center justify-between px-4 py-3 border-t border-apple-border/50 bg-apple-bg/30">
+                    <span class="text-xs text-apple-secondary">
+                        Showing ${startItem}-${endItem} of ${totalItems}
+                    </span>
+                    <div class="flex items-center gap-1">
+                        <button onclick="${onPageChange}(1)"
+                                class="p-1.5 rounded hover:bg-apple-border/50 ${currentPage === 1 ? 'opacity-30 cursor-not-allowed' : ''}"
+                                ${currentPage === 1 ? 'disabled' : ''}>
+                            <i data-lucide="chevrons-left" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="${onPageChange}(${currentPage - 1})"
+                                class="p-1.5 rounded hover:bg-apple-border/50 ${currentPage === 1 ? 'opacity-30 cursor-not-allowed' : ''}"
+                                ${currentPage === 1 ? 'disabled' : ''}>
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <span class="px-3 text-xs text-apple-text">
+                            Page ${currentPage} of ${totalPages}
+                        </span>
+                        <button onclick="${onPageChange}(${currentPage + 1})"
+                                class="p-1.5 rounded hover:bg-apple-border/50 ${currentPage === totalPages ? 'opacity-30 cursor-not-allowed' : ''}"
+                                ${currentPage === totalPages ? 'disabled' : ''}>
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="${onPageChange}(${totalPages})"
+                                class="p-1.5 rounded hover:bg-apple-border/50 ${currentPage === totalPages ? 'opacity-30 cursor-not-allowed' : ''}"
+                                ${currentPage === totalPages ? 'disabled' : ''}>
+                            <i data-lucide="chevrons-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function setDocsPage(page) {
+            docsPage = page;
+            updateDocumentsList();
+        }
+
+        function setQueriesPage(page) {
+            queriesPage = page;
+            updateTracesList();
+        }
+
+        function setDocChunksPage(page) {
+            docChunksPage = page;
+            renderDocChunksList();
+        }
+
+        function updateDocumentsList() {
+            const el = document.getElementById('documents-list');
+            const docs = Object.values(allData.documents || {});
+            const chunks = Object.values(allData.chunks || {});
+
+            // Update count labels
+            document.getElementById('doc-count-label').textContent = `${docs.length} document${docs.length !== 1 ? 's' : ''}`;
+            document.getElementById('chunk-count-label').textContent = `${chunks.length} chunk${chunks.length !== 1 ? 's' : ''}`;
+
+            if (!docs.length) {
+                el.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-16 text-apple-tertiary">
+                        <i data-lucide="folder-open" class="w-12 h-12 mb-3 opacity-40"></i>
+                        <p class="text-sm">No documents yet</p>
+                        <p class="text-xs mt-1 opacity-70">Upload documents to start indexing</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            // Paginate
+            const totalPages = Math.ceil(docs.length / PAGE_SIZE);
+            if (docsPage > totalPages) docsPage = totalPages;
+            const startIdx = (docsPage - 1) * PAGE_SIZE;
+            const paginatedDocs = docs.slice(startIdx, startIdx + PAGE_SIZE);
+
+            el.innerHTML = `
+                <table class="w-full">
+                    <thead class="bg-apple-bg/50 border-b border-apple-border">
+                        <tr class="text-xs text-apple-secondary uppercase tracking-wide">
+                            <th class="text-left py-2 px-4 font-medium">Document</th>
+                            <th class="text-left py-2 px-3 font-medium w-24">Pages</th>
+                            <th class="text-left py-2 px-3 font-medium w-24">Chunks</th>
+                            <th class="text-left py-2 px-3 font-medium w-32">Experiment</th>
+                            <th class="w-16"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${paginatedDocs.map(d => {
+                            const docChunks = Object.values(allData.chunks || {}).filter(c => c.doc_id === d.doc_id).length;
+                            const expName = getExperimentName(d.experiment_id);
+                            return `
+                            <tr class="border-b border-apple-border/50 cursor-pointer hover:bg-apple-bg/50 transition-colors group"
+                                onclick="openDocumentViewer('${d.doc_id}')">
+                                <td class="py-2.5 px-4">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="file-text" class="w-4 h-4 text-apple-secondary flex-shrink-0"></i>
+                                        <span class="text-sm text-apple-text truncate">${d.filename || 'Document'}</span>
+                                    </div>
+                                </td>
+                                <td class="py-2.5 px-3 text-sm text-apple-secondary">${d.num_pages || '-'}</td>
+                                <td class="py-2.5 px-3 text-sm text-apple-secondary">${docChunks}</td>
+                                <td class="py-2.5 px-3">
+                                    ${expName ? `<span class="inline-flex items-center gap-1 text-xs text-blue-600"><i data-lucide="folder" class="w-3 h-3"></i>${escapeHtml(expName)}</span>` : '<span class="text-apple-tertiary text-xs">-</span>'}
+                                </td>
+                                <td class="py-2.5 px-3 text-right">
+                                    <div class="flex items-center justify-end gap-1">
+                                        <button onclick="event.stopPropagation(); showAssignMenu(event, 'doc', '${d.doc_id}', ${d.experiment_id || 'null'})"
+                                                class="p-1 rounded hover:bg-apple-border/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Assign to experiment">
+                                            <i data-lucide="tag" class="w-3.5 h-3.5 text-apple-secondary"></i>
+                                        </button>
+                                        <i data-lucide="chevron-right" class="w-4 h-4 text-apple-tertiary"></i>
+                                    </div>
+                                </td>
+                            </tr>
+                        `}).join('')}
+                    </tbody>
+                </table>
+                ${renderPagination(docs.length, docsPage, PAGE_SIZE, 'setDocsPage')}
+            `;
+            lucide.createIcons();
+        }
+
+        function openDocumentViewer(id) {
+            // Clear highlight unless navigating from viewChunkInPdf (which sets highlightChunkText first)
+            const isFromChunkNav = highlightChunkText !== null && selectedDoc !== id;
+            if (selectedDoc !== id && !isFromChunkNav) {
+                highlightChunkText = null;
+            }
+            // Don't reset page if coming from chunk navigation (page already set)
+            if (!isFromChunkNav) {
+                currentPage = 1;
+            }
+            // Reset chunk pagination when opening new document
+            if (selectedDoc !== id) {
+                docChunksPage = 1;
+            }
+            selectedDoc = id;
+            selectedChunkInDoc = null;
+            const doc = allData.documents?.[id];
+            if (!doc) return;
+
+            const filePath = doc.file_path || '';
+            const docChunks = Object.values(allData.chunks || {}).filter(c => c.doc_id === id);
+
+            document.getElementById('doc-list-view').classList.add('hidden');
+            document.getElementById('doc-viewer-simple').classList.remove('hidden');
+            document.getElementById('doc-viewer-chunks').classList.add('hidden');
+
+            document.getElementById('doc-viewer-title-simple').textContent = doc.filename || 'Document';
+            document.getElementById('doc-viewer-subtitle-simple').textContent = `${doc.num_pages || '?'} pages | ${docChunks.length} chunks`;
+
+            const downloadBtn = document.getElementById('doc-download-btn-simple');
+            downloadBtn.href = `/api/files/${encodeURIComponent(filePath)}`;
+            downloadBtn.download = doc.filename;
+
+            renderSimpleSourceView();
+            lucide.createIcons();
+        }
+
+        function showChunksPanel() {
+            const doc = allData.documents?.[selectedDoc];
+            if (!doc) return;
+
+            const filePath = doc.file_path || '';
+
+            document.getElementById('doc-viewer-simple').classList.add('hidden');
+            document.getElementById('doc-viewer-chunks').classList.remove('hidden');
+
+            document.getElementById('doc-viewer-title-chunks').textContent = doc.filename || 'Document';
+
+            const downloadBtn = document.getElementById('doc-download-btn-chunks');
+            downloadBtn.href = `/api/files/${encodeURIComponent(filePath)}`;
+            downloadBtn.download = doc.filename;
+
+            const docChunks = Object.values(allData.chunks || {}).filter(c => c.doc_id === selectedDoc);
+            document.getElementById('chunks-panel-count').textContent = `${docChunks.length} chunks`;
+
+            if (currentPage > 1) {
+                document.getElementById('page-indicator').textContent = `Page ${currentPage}`;
+            }
+
+            renderDocChunksList();
+            renderDocSourceView();
+            lucide.createIcons();
+        }
+
+        function hideChunksPanel() {
+            selectedChunkInDoc = null;
+            document.getElementById('doc-viewer-chunks').classList.add('hidden');
+            document.getElementById('doc-viewer-simple').classList.remove('hidden');
+            document.getElementById('page-indicator').innerHTML = '';
+            renderSimpleSourceView();
+        }
+
+        function setSimpleViewMode(mode) {
+            simpleViewMode = mode;
+            document.querySelectorAll('.simple-mode-btn').forEach(btn => {
+                btn.classList.remove('bg-apple-blue', 'text-white', 'font-medium');
+                btn.classList.add('bg-apple-bg', 'text-apple-secondary');
+            });
+            const activeBtn = document.getElementById(`simple-mode-${mode}`);
+            activeBtn.classList.remove('bg-apple-bg', 'text-apple-secondary');
+            activeBtn.classList.add('bg-apple-blue', 'text-white', 'font-medium');
+            renderSimpleSourceView();
+        }
+
+        function getParsedPages(parsed) {
+            if (!parsed?.text) return [];
+            return parsed.text.split('\n\n--- PAGE BREAK ---\n\n');
+        }
+
+        function highlightTextInContent(text, highlightStr) {
+            if (!highlightStr || !text) return escapeHtml(text);
+
+            // Clean up the search string - take first portion for matching
+            const cleanSearch = highlightStr.trim().replace(/\s+/g, ' ');
+            const cleanText = text.replace(/\s+/g, ' ');
+
+            // Search for the first 80 chars of the chunk in the text
+            const searchPortion = cleanSearch.slice(0, 80).toLowerCase();
+            const matchIdx = cleanText.toLowerCase().indexOf(searchPortion);
+
+            if (matchIdx === -1) {
+                // Try with even shorter portion
+                const shortSearch = cleanSearch.slice(0, 40).toLowerCase();
+                const shortIdx = cleanText.toLowerCase().indexOf(shortSearch);
+                if (shortIdx === -1) return escapeHtml(text);
+
+                // Found with short search
+                const matchLen = Math.min(cleanSearch.length, cleanText.length - shortIdx, 500);
+                const before = text.slice(0, shortIdx);
+                const matched = text.slice(shortIdx, shortIdx + matchLen);
+                const after = text.slice(shortIdx + matchLen);
+                return escapeHtml(before) +
+                    '<mark class="chunk-highlight bg-amber-200 text-amber-900 rounded px-0.5">' +
+                    escapeHtml(matched) + '</mark>' + escapeHtml(after);
+            }
+
+            // Found the match - highlight the chunk length
+            const matchLen = Math.min(cleanSearch.length, cleanText.length - matchIdx, 500);
+            const before = text.slice(0, matchIdx);
+            const matched = text.slice(matchIdx, matchIdx + matchLen);
+            const after = text.slice(matchIdx + matchLen);
+
+            return escapeHtml(before) +
+                '<mark class="chunk-highlight bg-amber-200 text-amber-900 rounded px-0.5">' +
+                escapeHtml(matched) + '</mark>' + escapeHtml(after);
+        }
+
+        function renderSimpleSourceView() {
+            const doc = allData.documents?.[selectedDoc];
+            if (!doc) return;
+
+            const parsed = allData.parsed?.[selectedDoc] || {};
+            const filePath = doc.file_path || '';
+            const isPdf = filePath.toLowerCase().endsWith('.pdf');
+            const content = document.getElementById('doc-simple-content');
+
+            const pages = getParsedPages(parsed);
+            const totalPages = pages.length || 1;
+            const safePage = Math.min(Math.max(1, currentPage), totalPages);
+            const pageText = pages[safePage - 1] || 'No content for this page';
+
+            const pdfUrl = `/api/files/${encodeURIComponent(filePath)}`;
+
+            if (simpleViewMode === 'split') {
+                content.innerHTML = `
+                    <div class="flex-1 flex flex-col overflow-hidden">
+                        <div class="flex items-center justify-center gap-2 px-3 py-2 bg-white border-b border-apple-border">
+                            <button onclick="goToPage(1)" class="p-1.5 hover:bg-apple-bg rounded ${safePage <= 1 ? 'opacity-30' : ''}">
+                                <i data-lucide="chevrons-left" class="w-4 h-4 text-apple-secondary"></i>
+                            </button>
+                            <button onclick="goToPage(${safePage - 1})" class="p-1.5 hover:bg-apple-bg rounded ${safePage <= 1 ? 'opacity-30' : ''}">
+                                <i data-lucide="chevron-left" class="w-4 h-4 text-apple-secondary"></i>
+                            </button>
+                            <div class="flex items-center gap-2">
+                                <input type="number" min="1" max="${totalPages}" value="${safePage}"
+                                       onchange="goToPage(parseInt(this.value) || 1)"
+                                       class="w-12 bg-white border border-apple-border rounded-md px-2 py-1 text-center text-sm">
+                                <span class="text-sm text-apple-secondary">of ${totalPages}</span>
+                            </div>
+                            <button onclick="goToPage(${safePage + 1})" class="p-1.5 hover:bg-apple-bg rounded ${safePage >= totalPages ? 'opacity-30' : ''}">
+                                <i data-lucide="chevron-right" class="w-4 h-4 text-apple-secondary"></i>
+                            </button>
+                            <button onclick="goToPage(${totalPages})" class="p-1.5 hover:bg-apple-bg rounded ${safePage >= totalPages ? 'opacity-30' : ''}">
+                                <i data-lucide="chevrons-right" class="w-4 h-4 text-apple-secondary"></i>
+                            </button>
+                            ${highlightChunkText ? '<span class="ml-4 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs flex items-center gap-1"><i data-lucide="highlighter" class="w-3 h-3"></i>Highlighted</span>' : ''}
+                        </div>
+                        <div class="flex-1 flex overflow-hidden">
+                            <div class="flex flex-col border-r border-apple-border overflow-hidden" style="flex: 2;">
+                                <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-1">
+                                    <i data-lucide="file-text" class="w-3 h-3"></i>
+                                    Original PDF ${highlightChunkText ? '(with highlights)' : ''}
+                                </div>
+                                ${isPdf ? `<div id="simple-pdf-viewer" class="flex-1"></div>` : `
+                                <div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No PDF available</p></div>`}
+                            </div>
+                            <div class="flex flex-col overflow-hidden" style="flex: 1;">
+                                <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary">
+                                    Parsed Text (Page ${safePage})
+                                </div>
+                                <pre class="flex-1 p-3 text-xs overflow-y-auto bg-apple-bg/30 text-apple-text">${highlightTextInContent(pageText, highlightChunkText)}</pre>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+                // Render PDF with PDF.js
+                if (isPdf) {
+                    renderPdfViewer('simple-pdf-viewer', pdfUrl, safePage, highlightChunkText, false);
+                }
+            } else if (simpleViewMode === 'pdf') {
+                if (isPdf) {
+                    // PDF only view - show all pages with scrolling
+                    content.innerHTML = `
+                        <div class="flex-1 flex flex-col overflow-hidden">
+                            <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-2">
+                                <i data-lucide="file" class="w-3 h-3"></i>
+                                <span>Original PDF (${totalPages} pages) - Scroll to navigate</span>
+                                ${highlightChunkText ? '<span class="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs flex items-center gap-1"><i data-lucide="highlighter" class="w-3 h-3"></i>Highlighted</span>' : ''}
+                            </div>
+                            <div id="simple-pdf-viewer-full" class="flex-1"></div>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    // Render all pages for scrolling
+                    renderPdfViewer('simple-pdf-viewer-full', pdfUrl, safePage, highlightChunkText, true);
+                } else {
+                    content.innerHTML = `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No PDF available</p></div>`;
+                }
+            } else if (simpleViewMode === 'parsed') {
+                // Parsed only view - show all text with scrolling
+                const allParsedText = pages.join('\n\n━━━━━━━━━━ PAGE BREAK ━━━━━━━━━━\n\n');
+                content.innerHTML = `
+                    <div class="flex-1 flex flex-col overflow-hidden">
+                        <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-2">
+                            <i data-lucide="file-text" class="w-3 h-3"></i>
+                            <span>Parsed Text (${totalPages} pages) - Scroll to navigate</span>
+                            ${highlightChunkText ? '<span class="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">Highlighted</span>' : ''}
+                            ${highlightChunkText ? '<button onclick="clearHighlight(); renderSimpleSourceView();" class="ml-auto text-xs text-apple-secondary hover:text-apple-text px-2 py-0.5 bg-apple-bg rounded hover:bg-apple-border/50">Clear Highlight</button>' : ''}
+                        </div>
+                        <pre class="flex-1 p-4 text-sm overflow-y-auto bg-apple-bg/30 text-apple-text">${highlightTextInContent(allParsedText, highlightChunkText)}</pre>
+                    </div>
+                `;
+                lucide.createIcons();
+            }
+        }
+
+        function goToPage(page) {
+            const parsed = allData.parsed?.[selectedDoc] || {};
+            const pages = getParsedPages(parsed);
+            const totalPages = pages.length || 1;
+            currentPage = Math.min(Math.max(1, page), totalPages);
+
+            if (document.getElementById('doc-viewer-simple').classList.contains('hidden')) {
+                renderDocSourceView();
+            } else {
+                renderSimpleSourceView();
+            }
+        }
+
+        function renderDocChunksList() {
+            const doc = allData.documents?.[selectedDoc];
+            if (!doc) return;
+
+            const docChunks = Object.values(allData.chunks || {}).filter(c => c.doc_id === selectedDoc);
+            const el = document.getElementById('doc-chunks-list');
+
+            if (!docChunks.length) {
+                el.innerHTML = '<p class="text-apple-secondary text-xs p-2">No chunks</p>';
+                return;
+            }
+
+            // Paginate chunks
+            const totalPages = Math.ceil(docChunks.length / PAGE_SIZE);
+            if (docChunksPage > totalPages) docChunksPage = totalPages;
+            const startIdx = (docChunksPage - 1) * PAGE_SIZE;
+            const paginatedChunks = docChunks.slice(startIdx, startIdx + PAGE_SIZE);
+
+            el.innerHTML = `
+                <table class="w-full text-xs">
+                    <thead class="bg-apple-bg/50 border-b border-apple-border sticky top-0">
+                        <tr class="text-apple-secondary uppercase tracking-wide">
+                            <th class="text-left py-1.5 px-2 font-medium w-12">#</th>
+                            <th class="text-left py-1.5 px-2 font-medium w-14">Page</th>
+                            <th class="text-left py-1.5 px-2 font-medium">Preview</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${paginatedChunks.map(c => `
+                            <tr class="doc-chunk-item border-b border-apple-border/30 cursor-pointer transition-all
+                                        ${selectedChunkInDoc === c.chunk_id ? 'bg-apple-blue/10' : 'hover:bg-apple-border/30'}"
+                                 data-chunk-id="${c.chunk_id}"
+                                 data-text="${escapeHtml((c.text || '').toLowerCase())}"
+                                 onclick="selectChunkInDoc('${c.chunk_id}')">
+                                <td class="py-2 px-2 text-apple-text font-medium">${c.index ?? '?'}</td>
+                                <td class="py-2 px-2 text-apple-secondary">${c.page_number || '-'}</td>
+                                <td class="py-2 px-2 text-apple-secondary truncate max-w-0">${(c.text || '').slice(0, 60)}...</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                ${docChunks.length > PAGE_SIZE ? `
+                <div class="flex items-center justify-between px-2 py-2 border-t border-apple-border/50 bg-apple-bg/30 text-xs">
+                    <span class="text-apple-secondary">${startIdx + 1}-${Math.min(startIdx + PAGE_SIZE, docChunks.length)} of ${docChunks.length}</span>
+                    <div class="flex items-center gap-1">
+                        <button onclick="setDocChunksPage(${docChunksPage - 1})"
+                                class="p-1 rounded hover:bg-apple-border/50 ${docChunksPage === 1 ? 'opacity-30 cursor-not-allowed' : ''}"
+                                ${docChunksPage === 1 ? 'disabled' : ''}>
+                            <i data-lucide="chevron-left" class="w-3 h-3"></i>
+                        </button>
+                        <span class="px-2">${docChunksPage}/${totalPages}</span>
+                        <button onclick="setDocChunksPage(${docChunksPage + 1})"
+                                class="p-1 rounded hover:bg-apple-border/50 ${docChunksPage === totalPages ? 'opacity-30 cursor-not-allowed' : ''}"
+                                ${docChunksPage === totalPages ? 'disabled' : ''}>
+                            <i data-lucide="chevron-right" class="w-3 h-3"></i>
+                        </button>
+                    </div>
+                </div>
+                ` : ''}
+            `;
+            lucide.createIcons();
+        }
+
+        function filterDocChunks() {
+            const q = document.getElementById('doc-chunk-search').value.toLowerCase();
+            document.querySelectorAll('.doc-chunk-item').forEach(el => {
+                const text = el.dataset.text || '';
+                el.style.display = text.includes(q) ? 'block' : 'none';
+            });
+        }
+
+        function selectChunkInDoc(chunkId) {
+            selectedChunkInDoc = chunkId;
+            const chunk = allData.chunks?.[chunkId];
+
+            document.querySelectorAll('.doc-chunk-item').forEach(el => {
+                if (el.dataset.chunkId === chunkId) {
+                    el.classList.add('bg-apple-blue/10', 'border-apple-blue/30');
+                    el.classList.remove('border-transparent');
+                    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    el.classList.remove('bg-apple-blue/10', 'border-apple-blue/30');
+                    el.classList.add('border-transparent');
+                }
+            });
+
+            if (chunk?.page_number) {
+                const pageIndicator = document.getElementById('page-indicator');
+                if (pageIndicator) {
+                    pageIndicator.textContent = `Page ${chunk.page_number}`;
+                }
+                currentPage = chunk.page_number;
+                }
+
+            renderDocSourceView();
+        }
+
+        function setDocViewMode(mode) {
+            docViewMode = mode;
+            document.querySelectorAll('.view-mode-btn').forEach(btn => {
+                btn.classList.remove('bg-apple-blue', 'text-white', 'font-medium');
+                btn.classList.add('bg-apple-bg', 'text-apple-secondary');
+            });
+            const modeBtn = document.getElementById(`view-mode-${mode}`);
+            if (modeBtn) {
+                modeBtn.classList.remove('bg-apple-bg', 'text-apple-secondary');
+                modeBtn.classList.add('bg-apple-blue', 'text-white', 'font-medium');
+            }
+            renderDocSourceView();
+        }
+
+        function renderDocSourceView() {
+            const doc = allData.documents?.[selectedDoc];
+            if (!doc) return;
+
+            const parsed = allData.parsed?.[selectedDoc] || {};
+            const filePath = doc.file_path || '';
+            const isPdf = filePath.toLowerCase().endsWith('.pdf');
+            const content = document.getElementById('doc-source-content');
+
+            const pages = getParsedPages(parsed);
+            const totalPages = pages.length || 1;
+            const safePage = Math.min(Math.max(1, currentPage), totalPages);
+            const pageText = pages[safePage - 1] || 'No content for this page';
+
+            const pdfUrl = `/api/files/${encodeURIComponent(filePath)}`;
+
+            // Get highlight text from selected chunk
+            const selectedChunk = selectedChunkInDoc ? allData.chunks?.[selectedChunkInDoc] : null;
+            const chunkHighlightText = selectedChunk?.text || null;
+
+            if (docViewMode === 'split') {
+                content.innerHTML = `
+                    <div class="flex-1 flex flex-col overflow-hidden">
+                        <div class="flex items-center justify-center gap-2 px-3 py-2 bg-white border-b border-apple-border">
+                            <button onclick="goToPage(1)" class="p-1.5 hover:bg-apple-bg rounded ${safePage <= 1 ? 'opacity-30' : ''}">
+                                <i data-lucide="chevrons-left" class="w-4 h-4 text-apple-secondary"></i>
+                            </button>
+                            <button onclick="goToPage(${safePage - 1})" class="p-1.5 hover:bg-apple-bg rounded ${safePage <= 1 ? 'opacity-30' : ''}">
+                                <i data-lucide="chevron-left" class="w-4 h-4 text-apple-secondary"></i>
+                            </button>
+                            <div class="flex items-center gap-2">
+                                <input type="number" min="1" max="${totalPages}" value="${safePage}"
+                                       onchange="goToPage(parseInt(this.value) || 1)"
+                                       class="w-12 bg-white border border-apple-border rounded-md px-2 py-1 text-center text-sm">
+                                <span class="text-sm text-apple-secondary">of ${totalPages}</span>
+                            </div>
+                            <button onclick="goToPage(${safePage + 1})" class="p-1.5 hover:bg-apple-bg rounded ${safePage >= totalPages ? 'opacity-30' : ''}">
+                                <i data-lucide="chevron-right" class="w-4 h-4 text-apple-secondary"></i>
+                            </button>
+                            <button onclick="goToPage(${totalPages})" class="p-1.5 hover:bg-apple-bg rounded ${safePage >= totalPages ? 'opacity-30' : ''}">
+                                <i data-lucide="chevrons-right" class="w-4 h-4 text-apple-secondary"></i>
+                            </button>
+                            ${chunkHighlightText ? '<span class="ml-4 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs flex items-center gap-1"><i data-lucide="highlighter" class="w-3 h-3"></i>Chunk Highlighted</span>' : ''}
+                        </div>
+                        <div class="flex-1 flex overflow-hidden">
+                            <div class="flex flex-col border-r border-apple-border overflow-hidden" style="flex: 2;">
+                                <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-1">
+                                    <i data-lucide="file-text" class="w-3 h-3"></i>
+                                    Original PDF ${chunkHighlightText ? '(with highlights)' : ''}
+                                </div>
+                                ${isPdf ? `<div id="doc-pdf-viewer" class="flex-1"></div>` : `
+                                <div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No PDF available</p></div>`}
+                            </div>
+                            <div class="flex flex-col overflow-hidden" style="flex: 1;">
+                                <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary">
+                                    Parsed Text (Page ${safePage})
+                                </div>
+                                <pre class="flex-1 p-3 text-xs overflow-y-auto bg-apple-bg/30 text-apple-text">${highlightTextInContent(pageText, chunkHighlightText)}</pre>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+                // Render PDF with PDF.js and chunk highlighting
+                if (isPdf) {
+                    renderPdfViewer('doc-pdf-viewer', pdfUrl, safePage, chunkHighlightText, false);
+                }
+            } else if (docViewMode === 'pdf') {
+                if (isPdf) {
+                    // PDF only view - show all pages with scrolling
+                    content.innerHTML = `
+                        <div class="flex-1 flex flex-col overflow-hidden">
+                            <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-2">
+                                <i data-lucide="file" class="w-3 h-3"></i>
+                                <span>Original PDF (${totalPages} pages) - Scroll to navigate</span>
+                                ${chunkHighlightText ? '<span class="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs flex items-center gap-1"><i data-lucide="highlighter" class="w-3 h-3"></i>Chunk Highlighted</span>' : ''}
+                            </div>
+                            <div id="doc-pdf-viewer-full" class="flex-1"></div>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    // Render all pages for scrolling
+                    renderPdfViewer('doc-pdf-viewer-full', pdfUrl, safePage, chunkHighlightText, true);
+                } else {
+                    content.innerHTML = `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No PDF available</p></div>`;
+                }
+            } else if (docViewMode === 'parsed') {
+                // Parsed only view - show all text with scrolling
+                const allParsedText = pages.join('\n\n━━━━━━━━━━ PAGE BREAK ━━━━━━━━━━\n\n');
+                content.innerHTML = `
+                    <div class="flex-1 flex flex-col overflow-hidden">
+                        <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-2">
+                            <i data-lucide="file-text" class="w-3 h-3"></i>
+                            <span>Parsed Text (${totalPages} pages) - Scroll to navigate</span>
+                            ${chunkHighlightText ? '<span class="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">Chunk Highlighted</span>' : ''}
+                        </div>
+                        <pre class="flex-1 p-4 text-sm overflow-y-auto bg-apple-bg/30 text-apple-text">${highlightTextInContent(allParsedText, chunkHighlightText)}</pre>
+                    </div>
+                `;
+                lucide.createIcons();
+            }
+        }
+
+        function closeDocumentViewer() {
+            selectedDoc = null;
+            selectedChunkInDoc = null;
+            currentPage = 1;
+            document.getElementById('doc-viewer-simple').classList.add('hidden');
+            document.getElementById('doc-viewer-chunks').classList.add('hidden');
+            document.getElementById('doc-list-view').classList.remove('hidden');
+        }
+
+        function selectDocument(id) {
+            openDocumentViewer(id);
+        }
+
+        // ========== Chunk Navigation (from Retrievals) ==========
+        function viewChunkInPdf(docId, pageNumber, searchText, chunkId) {
+            // Get the full chunk text for highlighting
+            const chunk = allData.chunks?.[chunkId];
+            highlightChunkText = chunk?.text || searchText || null;
+
+            // Navigate to document and show parsed view with highlighting
+            showTab('documents');
+            setTimeout(() => {
+                currentPage = pageNumber || 1;
+                openDocumentViewer(docId);
+                // Switch to parsed view to show highlighting
+                setTimeout(() => {
+                    setSimpleViewMode('parsed');
+                    // Scroll to highlighted text after render
+                    setTimeout(() => {
+                        const highlighted = document.querySelector('.chunk-highlight');
+                        if (highlighted) {
+                            highlighted.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 100);
+                }, 100);
+            }, 100);
+        }
+
+        function clearHighlight() {
+            highlightChunkText = null;
+        }
+
+        // ========== Source Sidebar (in Requests view) ==========
+        let sidebarPage = 1;
+        let sidebarDocId = null;
+        let sidebarViewMode = 'parsed'; // 'parsed' or 'source'
+
+        // Pagination state for chunks
+        let chunksPage = 1;
+        const chunksPerPage = 10;
+
+        function showMoreChunks(btn, results) {
+            const container = document.getElementById('chunks-container');
+            if (!container) return;
+
+            // Render all remaining chunks
+            const startIdx = 10;
+            const remainingChunks = results.slice(startIdx);
+
+            remainingChunks.forEach((res, idx) => {
+                const i = startIdx + idx;
+                const chunk = allData.chunks?.[res.chunk_id];
+                const doc = chunk ? allData.documents?.[chunk.doc_id] : (res.doc_id ? allData.documents?.[res.doc_id] : null);
+                const docName = doc?.filename || res.doc_id || '';
+                const pageNum = chunk?.page_number || res.page_number;
+
+                const div = document.createElement('div');
+                div.className = 'chunk-item bg-apple-bg/50 rounded-lg p-3 border border-apple-border/50 hover:border-apple-border transition-colors';
+                div.innerHTML = `
+                    <div class="flex items-center gap-2 mb-2 flex-wrap text-xs">
+                        <span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">#${i + 1}</span>
+                        <span class="text-apple-tertiary">score: ${res.score?.toFixed(4)}</span>
+                        ${docName ? `<span class="text-apple-text flex items-center gap-1"><i data-lucide="file-text" class="w-3 h-3"></i>${escapeHtml(docName)}</span>` : ''}
+                        ${pageNum ? `<span class="text-apple-tertiary">p.${pageNum}</span>` : ''}
+                        ${chunk || res.doc_id ? `
+                        <button onclick="event.stopPropagation(); viewChunkSource('${res.chunk_id}', '${res.doc_id || ''}', ${res.page_number || 'null'}, decodeURIComponent('${encodeURIComponent(res.text || '')}'))"
+                                class="ml-auto text-xs text-apple-blue hover:underline flex items-center gap-1">
+                            <i data-lucide="eye" class="w-3 h-3"></i>
+                            View Source
+                        </button>
+                        ` : ''}
+                    </div>
+                    <p class="text-sm text-apple-secondary line-clamp-3">${escapeHtml(res.text || '')}</p>
+                `;
+                container.appendChild(div);
+            });
+
+            // Remove the button
+            btn.remove();
+            lucide.createIcons();
+        }
+
+        function viewChunkSource(chunkId, fallbackDocId = null, fallbackPage = null, fallbackText = null) {
+            const chunk = allData.chunks?.[chunkId];
+            const docId = chunk?.doc_id || fallbackDocId;
+            const pageNumber = chunk?.page_number || fallbackPage || 1;
+            const text = chunk?.text || fallbackText || '';
+
+            if (!docId) {
+                console.log('viewChunkSource: No doc_id found for chunk', chunkId);
+                return;
+            }
+            openSourceSidebar(docId, pageNumber, text);
+        }
+
+        function openSourceSidebar(docId, pageNumber, chunkText) {
+            let doc = allData.documents?.[docId];
+            let parsed = allData.parsed?.[docId];
+
+            // Try to find by filename if doc_id lookup fails
+            if (!doc && docId) {
+                const docs = Object.values(allData.documents || {});
+                doc = docs.find(d => d.filename === docId || d.doc_id === docId);
+                if (doc) {
+                    parsed = allData.parsed?.[doc.doc_id];
+                }
+            }
+
+            if (!doc || !parsed) {
+                console.log('openSourceSidebar: Document or parsed content not found', { docId, doc: !!doc, parsed: !!parsed });
+                console.log('Available docs:', Object.keys(allData.documents || {}));
+                alert('Source document not found. The document may not have been indexed yet.');
+                return;
+            }
+
+            sidebarDocId = docId;
+            sidebarPage = pageNumber || 1;
+            highlightChunkText = chunkText || null;
+            sidebarViewMode = 'parsed'; // Always start with parsed view
+
+            document.getElementById('source-sidebar').classList.remove('hidden');
+            document.getElementById('source-sidebar-title').textContent = doc.filename || 'Document';
+
+            // Reset toggle buttons
+            document.querySelectorAll('.sidebar-mode-btn').forEach(btn => {
+                btn.classList.remove('bg-apple-blue', 'text-white', 'font-medium');
+                btn.classList.add('bg-apple-bg', 'text-apple-secondary');
+            });
+            document.getElementById('sidebar-mode-parsed').classList.remove('bg-apple-bg', 'text-apple-secondary');
+            document.getElementById('sidebar-mode-parsed').classList.add('bg-apple-blue', 'text-white', 'font-medium');
+
+            renderSourceSidebar();
+            lucide.createIcons();
+
+            // Scroll to highlight after render
+            setTimeout(() => {
+                const highlighted = document.querySelector('#source-sidebar-content .chunk-highlight');
+                if (highlighted) {
+                    highlighted.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+        }
+
+        function setSidebarViewMode(mode) {
+            sidebarViewMode = mode;
+            document.querySelectorAll('.sidebar-mode-btn').forEach(btn => {
+                btn.classList.remove('bg-apple-blue', 'text-white', 'font-medium');
+                btn.classList.add('bg-apple-bg', 'text-apple-secondary');
+            });
+            const activeBtn = document.getElementById(`sidebar-mode-${mode}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('bg-apple-bg', 'text-apple-secondary');
+                activeBtn.classList.add('bg-apple-blue', 'text-white', 'font-medium');
+            }
+            renderSourceSidebar();
+            lucide.createIcons();
+        }
+
+        function renderSourceSidebar() {
+            const doc = allData.documents?.[sidebarDocId];
+            const parsed = allData.parsed?.[sidebarDocId];
+            const content = document.getElementById('source-sidebar-content');
+
+            if (!parsed?.text) {
+                content.innerHTML = '<p class="text-apple-secondary p-4">No parsed content available</p>';
+                return;
+            }
+
+            const pages = parsed.text.split('\n\n--- PAGE BREAK ---\n\n');
+            const totalPages = pages.length || 1;
+            const safePage = Math.min(Math.max(1, sidebarPage), totalPages);
+            const pageText = pages[safePage - 1] || '';
+
+            // Update page indicator
+            document.getElementById('source-sidebar-page').textContent = `Page ${safePage} of ${totalPages}`;
+
+            // Update nav button states
+            document.getElementById('sidebar-prev').classList.toggle('opacity-30', safePage <= 1);
+            document.getElementById('sidebar-prev').classList.toggle('pointer-events-none', safePage <= 1);
+            document.getElementById('sidebar-next').classList.toggle('opacity-30', safePage >= totalPages);
+            document.getElementById('sidebar-next').classList.toggle('pointer-events-none', safePage >= totalPages);
+
+            // Show/hide highlight badge (only for parsed view)
+            document.getElementById('sidebar-highlight-badge').classList.toggle('hidden', !highlightChunkText || sidebarViewMode !== 'parsed');
+
+            if (sidebarViewMode === 'parsed') {
+                // Render parsed text with highlighting
+                content.innerHTML = `<pre class="text-xs whitespace-pre-wrap text-apple-text leading-relaxed p-4 h-full overflow-y-auto">${highlightTextInContent(pageText, highlightChunkText)}</pre>`;
+            } else {
+                // Render source PDF with PDF.js for text highlighting
+                const filePath = doc?.file_path || '';
+                const isPdf = filePath.toLowerCase().endsWith('.pdf');
+                if (isPdf) {
+                    const pdfUrl = `/api/files/${encodeURIComponent(filePath)}`;
+                    content.innerHTML = '<div id="sidebar-pdf-viewer" class="flex-1 flex flex-col min-h-0"></div>';
+                    // Render with PDF.js, highlighting the chunk text
+                    renderPdfViewer('sidebar-pdf-viewer', pdfUrl, safePage, highlightChunkText, false);
+                    // Show highlight badge for source view too when we have highlight text
+                    document.getElementById('sidebar-highlight-badge').classList.toggle('hidden', !highlightChunkText);
+                } else {
+                    content.innerHTML = `<div class="flex items-center justify-center h-full text-apple-secondary"><p>No source document available</p></div>`;
+                }
+            }
+        }
+
+        function sidebarGoToPage(page) {
+            const parsed = allData.parsed?.[sidebarDocId];
+            if (!parsed?.text) return;
+            const pages = parsed.text.split('\n\n--- PAGE BREAK ---\n\n');
+            const totalPages = pages.length || 1;
+            sidebarPage = Math.min(Math.max(1, page), totalPages);
+            renderSourceSidebar();
+        }
+
+        function openFullDocumentView() {
+            if (!sidebarDocId) return;
+            const docId = sidebarDocId;
+            const pageToOpen = sidebarPage;
+            const textToHighlight = highlightChunkText;
+
+            // Close sidebar but preserve values for navigation
+            document.getElementById('source-sidebar').classList.add('hidden');
+
+            // Navigate to Documents tab and open the document
+            highlightChunkText = textToHighlight;
+            currentPage = pageToOpen;
+            showTab('documents');
+            setTimeout(() => {
+                openDocumentViewer(docId);
+                setTimeout(() => setSimpleViewMode('parsed'), 100);
+            }, 100);
+
+            // Clear sidebar state after navigation
+            sidebarDocId = null;
+        }
+
+        function closeSourceSidebar() {
+            document.getElementById('source-sidebar').classList.add('hidden');
+            sidebarDocId = null;
+            highlightChunkText = null;
+        }
+
+        // ========== Requests (Unified Traces + Retrievals + LLM) ==========
+        function getRequestItems() {
+            const traces = Object.values(allData.traces || {});
+            const retrievals = allData.retrievals || [];
+            const llmCalls = allData.llm_calls || [];
+
+            // Build request items: combine traces with their retrievals and LLM calls
+            let items = traces.map(t => {
+                const traceRetrievals = retrievals.filter(r => r.trace_id === t.trace_id);
+                const traceLLMCalls = llmCalls.filter(l => l.trace_id === t.trace_id);
+                const query = traceRetrievals[0]?.query;
+                return {
+                    type: 'trace',
+                    id: t.trace_id,
+                    trace: t,
+                    retrievals: traceRetrievals,
+                    llmCalls: traceLLMCalls,
+                    query: query,
+                    time: t.start_time
+                };
+            });
+
+            // Add orphan retrievals (no trace_id) - pair with closest LLM call by timestamp
+            const orphanRetrievals = retrievals.filter(r => !r.trace_id);
+            orphanRetrievals.forEach((r, i) => {
+                const retTime = new Date(r.timestamp || 0).getTime();
+                const nearbyLLM = llmCalls.filter(l => {
+                    if (l.trace_id) return false;
+                    const llmTime = new Date(l.timestamp || 0).getTime();
+                    return Math.abs(llmTime - retTime) < 30000;
+                });
+                items.push({
+                    type: 'retrieval',
+                    id: `ret-${i}`,
+                    retrievals: [r],
+                    llmCalls: nearbyLLM,
+                    query: r.query,
+                    time: r.timestamp
+                });
+            });
+
+            // Sort by time, newest first
+            items.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+            return items;
+        }
+
+        function updateTracesList() {
+            const el = document.getElementById('requests-list');
+            const items = getRequestItems();
+
+            // Update count
+            document.getElementById('requests-count-label').textContent = `${items.length} quer${items.length !== 1 ? 'ies' : 'y'}`;
+
+            if (!items.length) {
+                el.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-16 text-apple-tertiary">
+                        <i data-lucide="message-circle" class="w-12 h-12 mb-3 opacity-40"></i>
+                        <p class="text-sm">No queries yet</p>
+                        <p class="text-xs mt-1 opacity-70">Run queries to see them here</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            // Paginate
+            const totalPages = Math.ceil(items.length / PAGE_SIZE);
+            if (queriesPage > totalPages) queriesPage = totalPages;
+            const startIdx = (queriesPage - 1) * PAGE_SIZE;
+            const paginatedItems = items.slice(startIdx, startIdx + PAGE_SIZE);
+
+            el.innerHTML = `
+                <table class="w-full">
+                    <thead class="bg-apple-bg/50 border-b border-apple-border">
+                        <tr class="text-xs text-apple-secondary uppercase tracking-wide">
+                            <th class="text-left py-2 px-4 font-medium">Query</th>
+                            <th class="text-left py-2 px-3 font-medium w-28">Time</th>
+                            <th class="text-left py-2 px-3 font-medium w-20">Chunks</th>
+                            <th class="text-left py-2 px-3 font-medium w-28">Model</th>
+                            <th class="text-left py-2 px-3 font-medium w-20">Latency</th>
+                            <th class="text-left py-2 px-3 font-medium w-32">Experiment</th>
+                            <th class="w-16"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${paginatedItems.map(item => {
+                            const hasLLM = item.llmCalls?.length > 0;
+                            const llmModel = item.llmCalls?.[0]?.model || '';
+                            const queryPreview = item.query ? (item.query.length > 60 ? item.query.slice(0, 60) + '...' : item.query) : (item.trace?.name || 'Query');
+                            const chunkCount = item.retrievals?.[0]?.num_results || 0;
+                            const latency = item.llmCalls?.[0]?.duration_ms;
+                            const retrieval = item.retrievals?.[0];
+                            const expId = retrieval?.experiment_id;
+                            const expName = getExperimentName(expId);
+                            const retrievalId = retrieval?.id;
+
+                            return `
+                            <tr class="border-b border-apple-border/50 cursor-pointer hover:bg-apple-bg/50 transition-colors group"
+                                onclick="selectTrace('${item.id}')">
+                                <td class="py-2.5 px-4">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="message-square" class="w-4 h-4 text-apple-secondary flex-shrink-0"></i>
+                                        <span class="text-sm text-apple-text truncate">${escapeHtml(queryPreview)}</span>
+                                    </div>
+                                </td>
+                                <td class="py-2.5 px-3 text-xs text-apple-secondary">${formatTime(item.time)}</td>
+                                <td class="py-2.5 px-3 text-sm text-apple-secondary">${chunkCount || '-'}</td>
+                                <td class="py-2.5 px-3 text-xs text-apple-secondary font-mono">${hasLLM ? llmModel : '-'}</td>
+                                <td class="py-2.5 px-3 text-sm text-apple-secondary">${latency ? latency.toFixed(0) + 'ms' : '-'}</td>
+                                <td class="py-2.5 px-3">
+                                    ${expName ? `<span class="inline-flex items-center gap-1 text-xs text-blue-600"><i data-lucide="folder" class="w-3 h-3"></i>${escapeHtml(expName)}</span>` : '<span class="text-apple-tertiary text-xs">-</span>'}
+                                </td>
+                                <td class="py-2.5 px-3 text-right">
+                                    <div class="flex items-center justify-end gap-1">
+                                        ${retrievalId ? `<button onclick="event.stopPropagation(); showAssignMenu(event, 'retrieval', '${retrievalId}', ${expId || 'null'})"
+                                                class="p-1 rounded hover:bg-apple-border/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Assign to experiment">
+                                            <i data-lucide="tag" class="w-3.5 h-3.5 text-apple-secondary"></i>
+                                        </button>` : ''}
+                                        <i data-lucide="chevron-right" class="w-4 h-4 text-apple-tertiary"></i>
+                                    </div>
+                                </td>
+                            </tr>
+                        `}).join('')}
+                    </tbody>
+                </table>
+                ${renderPagination(items.length, queriesPage, PAGE_SIZE, 'setQueriesPage')}
+            `;
+            lucide.createIcons();
+        }
+
+        function selectTrace(id) {
+            selectedTrace = id;
+            // Show detail view, hide list view
+            document.getElementById('requests-list-view').classList.add('hidden');
+            document.getElementById('request-detail-view').classList.remove('hidden');
+            showTraceDetail(id);
+        }
+
+        function closeRequestDetail() {
+            selectedTrace = null;
+            // Close source sidebar if open
+            closeSourceSidebar();
+            // Show list view, hide detail view
+            document.getElementById('request-detail-view').classList.add('hidden');
+            document.getElementById('requests-list-view').classList.remove('hidden');
+        }
+
+        function showTraceDetail(id) {
+            const trace = allData.traces?.[id];
+            const retrievals = allData.retrievals || [];
+            const llmCalls = allData.llm_calls || [];
+
+            // Handle orphan retrievals
+            if (id.startsWith('ret-')) {
+                const retIndex = parseInt(id.replace('ret-', ''));
+                const orphanRets = retrievals.filter(r => !r.trace_id);
+                const r = orphanRets[retIndex];
+                if (r) {
+                    // Find nearby LLM calls for orphan retrievals
+                    const retTime = new Date(r.timestamp || 0).getTime();
+                    const nearbyLLM = llmCalls.filter(l => {
+                        if (l.trace_id) return false;
+                        const llmTime = new Date(l.timestamp || 0).getTime();
+                        return Math.abs(llmTime - retTime) < 30000;
+                    });
+                    showRequestDetail(r.query, [r], nearbyLLM, null);
+                    return;
+                }
+            }
+
+            if (!trace) return;
+
+            const traceRetrievals = retrievals.filter(r => r.trace_id === id);
+            const traceLLMCalls = llmCalls.filter(l => l.trace_id === id);
+            const query = traceRetrievals[0]?.query || trace.name || 'Request';
+
+            showRequestDetail(query, traceRetrievals, traceLLMCalls, trace);
+        }
+
+        function showRequestDetail(query, retrievalsList, llmCallsList, trace) {
+            const traceName = query || trace?.name || 'Query';
+
+            // Set header
+            document.getElementById('request-detail-name').textContent = traceName.length > 80 ? traceName.slice(0, 80) + '...' : traceName;
+            document.getElementById('request-detail-title').textContent = formatTime(trace?.start_time || retrievalsList[0]?.timestamp);
+
+            // Get retrieval and LLM data
+            const retrieval = retrievalsList[0];
+            const llmCall = llmCallsList[0];
+            const results = retrieval?.results || [];
+
+            // Build clean HTML
+            document.getElementById('request-detail-content').innerHTML = `
+                <div class="p-6 space-y-6">
+                    <!-- Query -->
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i data-lucide="search" class="w-4 h-4 text-violet-600"></i>
+                            <p class="text-xs text-apple-secondary font-medium uppercase tracking-wide">Query</p>
+                        </div>
+                        <p class="text-apple-text">"${escapeHtml(query || '')}"</p>
+                    </div>
+
+                    <!-- Retrieved Chunks (with pagination) -->
+                    ${results.length ? `
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="layers" class="w-4 h-4 text-amber-600"></i>
+                                <p class="text-xs text-apple-secondary font-medium uppercase tracking-wide">Retrieved Chunks</p>
+                            </div>
+                            <span class="text-xs text-apple-secondary">${results.length} results${retrieval?.duration_ms ? ` · ${retrieval.duration_ms.toFixed(0)}ms` : ''}</span>
+                        </div>
+                        <div class="space-y-2" id="chunks-container">
+                            ${results.slice(0, 10).map((res, i) => {
+                                const chunk = allData.chunks?.[res.chunk_id];
+                                const doc = chunk ? allData.documents?.[chunk.doc_id] : (res.doc_id ? allData.documents?.[res.doc_id] : null);
+                                const docName = doc?.filename || res.doc_id || '';
+                                const pageNum = chunk?.page_number || res.page_number;
+                                return `
+                                <div class="chunk-item bg-apple-bg/50 rounded-lg p-3 border border-apple-border/50 hover:border-apple-border transition-colors">
+                                    <div class="flex items-center gap-2 mb-2 flex-wrap text-xs">
+                                        <span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">#${i + 1}</span>
+                                        <span class="text-apple-tertiary">score: ${res.score?.toFixed(4)}</span>
+                                        ${docName ? `<span class="text-apple-text flex items-center gap-1"><i data-lucide="file-text" class="w-3 h-3"></i>${docName}</span>` : ''}
+                                        ${pageNum ? `<span class="text-apple-tertiary">p.${pageNum}</span>` : ''}
+                                        ${chunk || res.doc_id ? `
+                                        <button onclick="event.stopPropagation(); viewChunkSource('${res.chunk_id}', '${res.doc_id || ''}', ${res.page_number || 'null'}, decodeURIComponent('${encodeURIComponent(res.text || '')}'))"
+                                                class="ml-auto text-xs text-apple-blue hover:underline flex items-center gap-1">
+                                            <i data-lucide="eye" class="w-3 h-3"></i>
+                                            View Source
+                                        </button>
+                                        ` : ''}
+                                    </div>
+                                    <p class="text-sm text-apple-secondary line-clamp-3">${escapeHtml(res.text || '')}</p>
+                                </div>
+                            `}).join('')}
+                        </div>
+                        ${results.length > 10 ? `
+                        <button onclick="showMoreChunks(this, ${JSON.stringify(results).replace(/"/g, '&quot;')})"
+                                class="mt-3 w-full py-2 text-xs text-apple-blue hover:text-apple-blue/80 flex items-center justify-center gap-1 border border-apple-border/50 rounded-lg hover:bg-apple-bg/50 transition-colors">
+                            <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                            Show ${results.length - 10} more chunks
+                        </button>
+                        ` : ''}
+                    </div>
+                    ` : ''}
+
+                    <!-- Response (from retrieval if no LLM call) -->
+                    ${!llmCall && retrieval?.response ? `
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i data-lucide="message-square" class="w-4 h-4 text-emerald-600"></i>
+                            <p class="text-xs text-apple-secondary font-medium uppercase tracking-wide">Response</p>
+                        </div>
+                        <div class="bg-apple-bg/50 rounded-lg p-4 border border-apple-border/50">
+                            <pre class="text-sm text-apple-text whitespace-pre-wrap">${escapeHtml(retrieval.response)}</pre>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <!-- LLM Call Details -->
+                    ${llmCall ? `
+                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="sparkles" class="w-4 h-4 text-rose-600"></i>
+                                <p class="text-xs text-apple-secondary font-medium uppercase tracking-wide">LLM Call</p>
+                            </div>
+                            <span class="flex items-center gap-1 text-xs ${llmCall.status === 'error' ? 'text-red-500' : 'text-emerald-600'}">
+                                <i data-lucide="${llmCall.status === 'error' ? 'x-circle' : 'check-circle'}" class="w-3 h-3"></i>
+                                ${llmCall.status || 'success'}
+                            </span>
+                        </div>
+
+                        <!-- LLM Metadata Table -->
+                        <div class="bg-apple-bg/50 rounded-lg border border-apple-border/50 mb-4 overflow-hidden">
+                            <table class="w-full text-xs">
+                                <tbody class="divide-y divide-apple-border/50">
+                                    <tr>
+                                        <td class="px-3 py-2 text-apple-secondary w-32">Model</td>
+                                        <td class="px-3 py-2 text-apple-text font-mono">${llmCall.model || 'unknown'}</td>
+                                    </tr>
+                                    ${llmCall.duration_ms ? `
+                                    <tr>
+                                        <td class="px-3 py-2 text-apple-secondary">Latency</td>
+                                        <td class="px-3 py-2 text-apple-text font-mono">${llmCall.duration_ms.toFixed(0)}ms</td>
+                                    </tr>
+                                    ` : ''}
+                                    ${llmCall.prompt_tokens || llmCall.completion_tokens || llmCall.total_tokens ? `
+                                    <tr>
+                                        <td class="px-3 py-2 text-apple-secondary">Tokens</td>
+                                        <td class="px-3 py-2 text-apple-text font-mono">
+                                            ${llmCall.prompt_tokens ? `prompt: ${llmCall.prompt_tokens}` : ''}
+                                            ${llmCall.completion_tokens ? ` · completion: ${llmCall.completion_tokens}` : ''}
+                                            ${llmCall.total_tokens ? ` · total: ${llmCall.total_tokens}` : ''}
+                                        </td>
+                                    </tr>
+                                    ` : ''}
+                                    ${llmCall.temperature !== undefined ? `
+                                    <tr>
+                                        <td class="px-3 py-2 text-apple-secondary">Temperature</td>
+                                        <td class="px-3 py-2 text-apple-text font-mono">${llmCall.temperature}</td>
+                                    </tr>
+                                    ` : ''}
+                                    ${llmCall.max_tokens ? `
+                                    <tr>
+                                        <td class="px-3 py-2 text-apple-secondary">Max Tokens</td>
+                                        <td class="px-3 py-2 text-apple-text font-mono">${llmCall.max_tokens}</td>
+                                    </tr>
+                                    ` : ''}
+                                    ${llmCall.finish_reason ? `
+                                    <tr>
+                                        <td class="px-3 py-2 text-apple-secondary">Finish Reason</td>
+                                        <td class="px-3 py-2 text-apple-text font-mono">${llmCall.finish_reason}</td>
+                                    </tr>
+                                    ` : ''}
+                                    ${llmCall.stop ? `
+                                    <tr>
+                                        <td class="px-3 py-2 text-apple-secondary">Stop Sequences</td>
+                                        <td class="px-3 py-2 text-apple-text font-mono">${JSON.stringify(llmCall.stop)}</td>
+                                    </tr>
+                                    ` : ''}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Tool/Function Calls -->
+                        ${llmCall.tool_calls?.length ? `
+                        <div class="mb-4">
+                            <p class="text-xs text-apple-tertiary uppercase tracking-wide mb-2">Tool Calls</p>
+                            <div class="space-y-2">
+                                ${llmCall.tool_calls.map(tc => `
+                                <div class="bg-apple-bg/50 rounded-lg p-3 border border-apple-border/50">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-xs font-medium text-apple-text">${tc.function?.name || tc.name || 'tool'}</span>
+                                        <span class="text-xs text-apple-tertiary">${tc.type || 'function'}</span>
+                                    </div>
+                                    <pre class="text-xs text-apple-secondary font-mono overflow-x-auto">${escapeHtml(JSON.stringify(tc.function?.arguments || tc.arguments || {}, null, 2))}</pre>
+                                </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ` : ''}
+
+                        ${llmCall.function_call ? `
+                        <div class="mb-4">
+                            <p class="text-xs text-apple-tertiary uppercase tracking-wide mb-2">Function Call</p>
+                            <div class="bg-apple-bg/50 rounded-lg p-3 border border-apple-border/50">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-xs font-medium text-apple-text">${llmCall.function_call.name}</span>
+                                </div>
+                                <pre class="text-xs text-apple-secondary font-mono overflow-x-auto">${escapeHtml(llmCall.function_call.arguments || '')}</pre>
+                            </div>
+                        </div>
+                        ` : ''}
+
+                        <!-- Response -->
+                        ${llmCall.response ? `
+                        <div class="mb-4">
+                            <p class="text-xs text-apple-tertiary uppercase tracking-wide mb-2">Response</p>
+                            <div class="bg-white rounded-lg p-4 border border-apple-border/50">
+                                <pre class="text-sm text-apple-text whitespace-pre-wrap">${escapeHtml(llmCall.response)}</pre>
+                            </div>
+                        </div>
+                        ` : ''}
+
+                        <!-- Error -->
+                        ${llmCall.error ? `
+                        <div class="mb-4">
+                            <p class="text-xs text-red-500 uppercase tracking-wide mb-2">Error</p>
+                            <div class="bg-red-50 rounded-lg p-4 border border-red-200">
+                                <pre class="text-sm text-red-700 whitespace-pre-wrap">${escapeHtml(llmCall.error)}</pre>
+                            </div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    ` : ''}
+
+                    <!-- Prompt (collapsible) -->
+                    ${llmCall?.messages || llmCall?.prompt ? `
+                    <details class="group bg-white rounded-xl border border-apple-border shadow-sm">
+                        <summary class="cursor-pointer px-4 py-3 flex items-center gap-2 hover:bg-apple-bg/30 transition-colors rounded-xl">
+                            <i data-lucide="chevron-right" class="w-4 h-4 text-apple-secondary group-open:rotate-90 transition-transform"></i>
+                            <i data-lucide="terminal" class="w-4 h-4 text-sky-600"></i>
+                            <span class="text-xs text-apple-secondary font-medium uppercase tracking-wide">Input (Prompt/Messages)</span>
+                        </summary>
+                        <div class="px-4 pb-4 pt-2 border-t border-apple-border">
+                            ${llmCall.messages ? `
+                            <div class="space-y-3">
+                                ${llmCall.messages.map(msg => `
+                                    <div class="border-l-2 ${msg.role === 'user' ? 'border-sky-500' : msg.role === 'assistant' ? 'border-emerald-500' : msg.role === 'system' ? 'border-amber-500' : 'border-apple-border'} pl-3 py-1">
+                                        <span class="text-xs font-medium ${msg.role === 'user' ? 'text-sky-600' : msg.role === 'assistant' ? 'text-emerald-600' : msg.role === 'system' ? 'text-amber-600' : 'text-apple-secondary'}">${msg.role}</span>
+                                        <pre class="text-sm text-apple-text whitespace-pre-wrap mt-1">${escapeHtml(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2))}</pre>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            ` : `<pre class="text-sm text-apple-text whitespace-pre-wrap">${escapeHtml(llmCall.prompt || '')}</pre>`}
+                        </div>
+                    </details>
+                    ` : ''}
+
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // ========== Recent Activity ==========
+        function updateRecentActivity() {
+            // Recent docs
+            const docsEl = document.getElementById('recent-docs');
+            const docs = Object.values(allData.documents || {}).slice(-5).reverse();
+
+            if (!docs.length) {
+                docsEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-6 text-apple-tertiary">
+                        <i data-lucide="file-plus" class="w-8 h-8 mb-2 opacity-50"></i>
+                        <p class="text-sm">No documents yet</p>
+                    </div>
+                `;
+                lucide.createIcons();
+            } else {
+                docsEl.innerHTML = docs.map(d => `
+                    <div class="flex items-center gap-3 p-3 bg-apple-bg rounded-lg cursor-pointer hover:bg-apple-border/30 transition-colors"
+                         onclick="showTab('documents'); setTimeout(() => selectDocument('${d.doc_id}'), 100);">
+                        <div class="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="file-text" class="w-4 h-4 text-emerald-600"></i>
+                        </div>
+                        <span class="truncate flex-1 text-sm text-apple-text">${d.filename || 'Document'}</span>
+                        <span class="text-xs text-apple-secondary">${d.num_pages || '?'} pages</span>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-apple-tertiary flex-shrink-0"></i>
+                    </div>
+                `).join('');
+                lucide.createIcons();
+            }
+
+            // Recent queries (from retrievals)
+            const retsEl = document.getElementById('recent-retrievals');
+            const rets = (allData.retrievals || []).slice(-5).reverse();
+
+            if (!rets.length) {
+                retsEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-6 text-apple-tertiary">
+                        <i data-lucide="search" class="w-8 h-8 mb-2 opacity-50"></i>
+                        <p class="text-sm">No queries yet</p>
+                    </div>
+                `;
+                lucide.createIcons();
+            } else {
+                retsEl.innerHTML = rets.map((r, i) => {
+                    // Find associated trace or use orphan retrieval id
+                    const traceId = r.trace_id || `ret-${(allData.retrievals?.length || 0) - 1 - i}`;
+                    return `
+                    <div class="flex items-center gap-3 p-3 bg-apple-bg rounded-lg cursor-pointer hover:bg-apple-border/30 transition-colors"
+                         onclick="showTab('traces'); setTimeout(() => selectTrace('${traceId}'), 100);">
+                        <div class="w-8 h-8 bg-violet-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="search" class="w-4 h-4 text-violet-600"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="truncate text-sm text-apple-text">"${r.query || ''}"</p>
+                            <p class="text-xs text-apple-secondary mt-0.5">${r.num_results || 0} results · ${r.duration_ms?.toFixed(0) || '?'}ms</p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-apple-tertiary flex-shrink-0"></i>
+                    </div>
+                `}).join('');
+                lucide.createIcons();
+            }
+        }
+
+        // ========== Utilities ==========
+        function showTab(name) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`tab-${name}`).classList.remove('hidden');
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                const isActive = btn.dataset.tab === name;
+                btn.classList.toggle('bg-black/5', isActive);
+                btn.classList.toggle('text-apple-text', isActive);
+                btn.classList.toggle('font-medium', isActive);
+                btn.classList.toggle('text-apple-secondary', !isActive);
+            });
+        }
+
+        function kindColor(kind) {
+            const colors = { document: 'green', chunking: 'yellow', embedding: 'blue', retrieval: 'purple', llm: 'pink', query: 'cyan', indexing: 'blue' };
+            return colors[kind] || 'gray';
+        }
+
+        function formatTime(t) {
+            if (!t) return 'N/A';
+            return new Date(t).toLocaleTimeString();
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function escapeForJs(text) {
+            if (!text) return '';
+            return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/\n/g, ' ').replace(/\r/g, '');
+        }
+    </script>
+</body>
+</html>
