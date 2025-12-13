@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SourceMapR — Evidence observability for RAG</title>
+  <meta name="description" content="SourceMapR traces answers back to evidence, and evidence back to raw documents. See what your RAG system actually saw." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-zinc-950 text-zinc-100">
+  <!-- Top glow -->
+  <div class="pointer-events-none fixed inset-0 overflow-hidden">
+    <div class="absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-indigo-600/20 blur-3xl"></div>
+    <div class="absolute top-56 left-1/4 h-[420px] w-[420px] rounded-full bg-fuchsia-500/10 blur-3xl"></div>
+  </div>
+
+  <!-- Nav -->
+  <header class="relative">
+    <nav class="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-xl bg-white/10 ring-1 ring-white/15 grid place-items-center">
+          <span class="text-sm font-bold tracking-tight">SM</span>
+        </div>
+        <div class="font-semibold tracking-tight">SourceMapR</div>
+        <span class="ml-2 hidden rounded-full bg-white/5 px-2 py-1 text-xs text-zinc-300 ring-1 ring-white/10 sm:inline">
+          OSS • v0.1
+        </span>
+      </div>
+
+      <div class="hidden items-center gap-6 text-sm text-zinc-300 md:flex">
+        <a href="#why" class="hover:text-white">Why</a>
+        <a href="#features" class="hover:text-white">Features</a>
+        <a href="#workflow" class="hover:text-white">Workflow</a>
+        <a href="#oss" class="hover:text-white">Open Source</a>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <a href="https://github.com/yourusername/sourcemapr#readme" class="hidden rounded-xl bg-white/5 px-4 py-2 text-sm text-zinc-200 ring-1 ring-white/10 hover:bg-white/10 sm:inline">
+          Docs
+        </a>
+        <a href="https://github.com/yourusername/sourcemapr" class="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-400">
+          GitHub
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Hero -->
+  <section class="relative">
+    <div class="mx-auto max-w-6xl px-6 pb-16 pt-10 sm:pt-16">
+      <div class="grid gap-10 lg:grid-cols-2 lg:items-center">
+        <div>
+          <p class="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-zinc-300 ring-1 ring-white/10">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+            Evidence observability for RAG systems
+          </p>
+
+          <h1 class="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">
+            See what your RAG system <span class="text-indigo-300">actually saw</span>.
+          </h1>
+
+          <p class="mt-5 max-w-xl text-base leading-relaxed text-zinc-300">
+            SourceMapR traces every answer back to the exact document evidence that produced it —
+            and shows how that evidence was created (parse → structure → chunk → retrieve → answer).
+          </p>
+
+          <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <a href="#get-started" class="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-zinc-200">
+              Get started
+            </a>
+            <a href="#demo" class="rounded-xl bg-white/5 px-5 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10">
+              View workflow
+            </a>
+            <p class="text-xs text-zinc-400">
+              Drop-in instrumentation for LlamaIndex.
+            </p>
+          </div>
+
+          <div class="mt-10 flex flex-wrap gap-2 text-xs text-zinc-300">
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Answer → Evidence</span>
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">PDF overlays</span>
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Pipeline diffs</span>
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Query replay</span>
+          </div>
+        </div>
+
+        <!-- Mock UI card -->
+        <div class="relative">
+          <div class="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-medium">Answer Inspector</div>
+              <div class="text-xs text-zinc-400">Session · 12:41:09</div>
+            </div>
+
+            <div class="mt-4 grid gap-3">
+              <div class="rounded-xl bg-zinc-950/60 p-3 ring-1 ring-white/10">
+                <div class="text-xs text-zinc-400">Question</div>
+                <div class="mt-1 text-sm">What is the attention mechanism in transformers?</div>
+              </div>
+
+              <div class="rounded-xl bg-zinc-950/60 p-3 ring-1 ring-white/10">
+                <div class="flex items-center justify-between">
+                  <div class="text-xs text-zinc-400">Evidence used</div>
+                  <div class="text-xs text-emerald-300">3 chunks</div>
+                </div>
+
+                <div class="mt-2 space-y-2">
+                  <div class="rounded-lg bg-white/5 p-2 ring-1 ring-white/10">
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="text-zinc-300">attention_paper.pdf</span>
+                      <span class="text-zinc-400">Page 5</span>
+                    </div>
+                    <div class="mt-1 text-xs text-zinc-400">chunk #12 · score: 0.89</div>
+                  </div>
+
+                  <div class="rounded-lg bg-white/5 p-2 ring-1 ring-white/10">
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="text-zinc-300">attention_paper.pdf</span>
+                      <span class="text-zinc-400">Page 3</span>
+                    </div>
+                    <div class="mt-1 text-xs text-zinc-400">chunk #7 · score: 0.84</div>
+                  </div>
+
+                  <div class="rounded-lg bg-white/5 p-2 ring-1 ring-white/10">
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="text-zinc-300">llama2_paper.pdf</span>
+                      <span class="text-zinc-400">Page 8</span>
+                    </div>
+                    <div class="mt-1 text-xs text-zinc-400">chunk #31 · score: 0.76</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-xl bg-zinc-950/60 p-3 ring-1 ring-white/10">
+                <div class="flex items-center justify-between">
+                  <div class="text-xs text-zinc-400">LLM Call</div>
+                  <div class="text-xs text-fuchsia-300">gpt-4o-mini</div>
+                </div>
+                <ul class="mt-2 space-y-1 text-xs text-zinc-300">
+                  <li>• Prompt tokens: <span class="text-zinc-200">1,247</span></li>
+                  <li>• Response tokens: <span class="text-zinc-200">312</span></li>
+                  <li>• Latency: <span class="text-zinc-200">1.2s</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <p class="mt-3 text-center text-xs text-zinc-500">
+            Your app stays the same — SourceMapR shows the evidence lineage.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why -->
+  <section id="why" class="relative border-t border-white/10">
+    <div class="mx-auto max-w-6xl px-6 py-16">
+      <h2 class="text-2xl font-semibold tracking-tight">Why SourceMapR</h2>
+      <p class="mt-3 max-w-3xl text-zinc-300">
+        Most "LLM observability" tools stop at tracing calls and showing retrieved text.
+        SourceMapR goes deeper: it treats documents as structured evidence and exposes the full lineage.
+      </p>
+
+      <div class="mt-10 grid gap-4 md:grid-cols-3">
+        <div class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+          <div class="text-sm font-semibold">Debug ingestion</div>
+          <p class="mt-2 text-sm text-zinc-300">See every document, how it was parsed, chunked, and embedded. Catch issues before they hit production.</p>
+        </div>
+        <div class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+          <div class="text-sm font-semibold">Debug retrieval</div>
+          <p class="mt-2 text-sm text-zinc-300">Inspect which chunks were retrieved, their scores, and click through to see them in the original PDF.</p>
+        </div>
+        <div class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+          <div class="text-sm font-semibold">Compare experiments</div>
+          <p class="mt-2 text-sm text-zinc-300">A/B test chunking strategies, embedding models, and retrieval settings. See what actually changed.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="relative border-t border-white/10">
+    <div class="mx-auto max-w-6xl px-6 py-16">
+      <h2 class="text-2xl font-semibold tracking-tight">Features</h2>
+
+      <div class="mt-10 grid gap-4 lg:grid-cols-2">
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
+          <h3 class="text-base font-semibold">Answer → Evidence mapping</h3>
+          <p class="mt-2 text-sm text-zinc-300">
+            Trace every response to the exact chunks that were retrieved. See similarity scores and rankings.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
+          <h3 class="text-base font-semibold">Document inspector with overlays</h3>
+          <p class="mt-2 text-sm text-zinc-300">
+            Click any chunk to see it highlighted in the original PDF. No more guessing where evidence came from.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
+          <h3 class="text-base font-semibold">Full LLM call capture</h3>
+          <p class="mt-2 text-sm text-zinc-300">
+            See the exact prompt sent to the model, the response, token counts, and latency for every query.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
+          <h3 class="text-base font-semibold">Experiment tracking</h3>
+          <p class="mt-2 text-sm text-zinc-300">
+            Organize runs into experiments. Compare "chunk-size-256" vs "chunk-size-512" side by side.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Workflow -->
+  <section id="workflow" class="relative border-t border-white/10">
+    <div class="mx-auto max-w-6xl px-6 py-16" id="demo">
+      <h2 class="text-2xl font-semibold tracking-tight">Two lines of code</h2>
+      <p class="mt-3 max-w-3xl text-zinc-300">
+        Add SourceMapR to your existing LlamaIndex pipeline. Your code stays the same — we just watch.
+      </p>
+
+      <div class="mt-8 rounded-2xl bg-zinc-900/40 p-6 ring-1 ring-white/10">
+        <pre class="overflow-x-auto text-sm text-zinc-200"><code><span class="text-zinc-500"># pip install sourcemapr</span>
+
+<span class="text-indigo-300">from</span> sourcemapr <span class="text-indigo-300">import</span> init_tracing, stop_tracing
+init_tracing(endpoint=<span class="text-emerald-300">"http://localhost:5000"</span>)
+
+<span class="text-zinc-500"># Your existing LlamaIndex code — unchanged</span>
+<span class="text-indigo-300">from</span> llama_index.core <span class="text-indigo-300">import</span> SimpleDirectoryReader, VectorStoreIndex
+
+documents = SimpleDirectoryReader(<span class="text-emerald-300">"./papers"</span>).load_data()
+index = VectorStoreIndex.from_documents(documents)
+
+response = index.as_query_engine().query(<span class="text-emerald-300">"What is attention?"</span>)
+print(response)
+
+stop_tracing()</code></pre>
+      </div>
+
+      <div class="mt-6 text-sm text-zinc-400">
+        Then open <code class="rounded bg-white/10 px-2 py-1">http://localhost:5000</code> to see the full evidence lineage.
+      </div>
+    </div>
+  </section>
+
+  <!-- OSS -->
+  <section id="oss" class="relative border-t border-white/10">
+    <div class="mx-auto max-w-6xl px-6 py-16" id="get-started">
+      <div class="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 class="text-2xl font-semibold tracking-tight">Open source first</h2>
+          <p class="mt-3 max-w-2xl text-zinc-300">
+            Built for developers who are tired of print-debugging RAG pipelines.
+            Run locally. Own your data. See your evidence.
+          </p>
+          <div class="mt-6 flex flex-wrap gap-2 text-xs text-zinc-300">
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">MIT License</span>
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Local-first</span>
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">SQLite storage</span>
+          </div>
+        </div>
+
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
+          <div class="text-sm font-semibold">Get started in 60 seconds</div>
+          <div class="mt-4 rounded-xl bg-zinc-900/60 p-4 font-mono text-sm text-zinc-200">
+            <div>pip install sourcemapr</div>
+            <div class="text-zinc-500">sourcemapr server</div>
+          </div>
+          <div class="mt-4 flex gap-3">
+            <a href="https://github.com/yourusername/sourcemapr" class="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400">GitHub</a>
+            <a href="https://github.com/yourusername/sourcemapr#readme" class="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10">Read docs</a>
+          </div>
+        </div>
+      </div>
+
+      <footer class="mt-16 border-t border-white/10 pt-8 text-sm text-zinc-400">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>© <span id="y"></span> SourceMapR — Evidence observability for RAG.</div>
+          <div class="flex gap-4">
+            <a href="https://github.com/yourusername/sourcemapr" class="hover:text-white">GitHub</a>
+            <a href="https://github.com/yourusername/sourcemapr#readme" class="hover:text-white">Docs</a>
+            <a href="https://github.com/yourusername/sourcemapr/issues" class="hover:text-white">Issues</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </section>
+
+  <script>
+    document.getElementById("y").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

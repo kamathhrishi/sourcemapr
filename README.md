@@ -1,210 +1,282 @@
-# SourcemapR
+# SourceMapR
 
-RAG Observability Platform - Trace, debug and understand your RAG pipelines with ease.
+**Evidence observability for RAG.** See what your RAG system actually saw.
 
-## Features
+SourceMapR traces every answer back to the exact document evidence that produced it — and shows how that evidence was created (parse → chunk → embed → retrieve → answer).
 
-- **Document Tracing**: Track document loading, parsing, and chunking
-- **Embedding Monitoring**: Monitor embedding generation with timing
-- **Query Tracing**: Full visibility into retrieval operations and results
-- **LLM Call Logging**: Capture prompts, responses, and token usage
-- **Experiments**: Organize traces into experiments for A/B testing
-- **Web Dashboard**: Real-time visualization of your RAG pipeline
+> Ever wondered why your RAG app returned a weird answer? Now you can see exactly which chunks were retrieved, what prompts were sent to the LLM, and trace the entire flow from query to response.
 
-## Installation
+---
+
+## Why SourceMapR?
+
+Most "LLM observability" tools stop at tracing calls and showing retrieved text. SourceMapR goes deeper.
+
+| Problem | SourceMapR Solution |
+|---------|---------------------|
+| "Which chunks did the retriever return?" | See every retrieved chunk with similarity scores |
+| "What prompt was sent to the LLM?" | Full prompt/response capture with token counts |
+| "Why did the model hallucinate?" | Click any chunk to view it in the original PDF |
+| "Is my chunking strategy working?" | Compare experiments side by side |
+
+**Two lines of code. Full evidence lineage.**
+
+---
+
+## Quick Start
+
+### 1. Install
 
 ```bash
 pip install sourcemapr
 ```
 
-Or install from source:
-
-```bash
-git clone https://github.com/yourusername/sourcemapr.git
-cd sourcemapr
-pip install -e .
-```
-
-For LlamaIndex integration:
-
-```bash
-pip install sourcemapr[llamaindex]
-```
-
-## Quick Start
-
-### 1. Start the Server
+### 2. Start the Dashboard
 
 ```bash
 sourcemapr server
 ```
 
-This starts the observability dashboard at http://localhost:5000
+Opens at [http://localhost:5000](http://localhost:5000)
 
-### 2. Add Tracing to Your Code
+### 3. Add Two Lines to Your Code
+
+```python
+from sourcemapr import init_tracing, stop_tracing
+init_tracing(endpoint="http://localhost:5000")
+
+# Your existing LlamaIndex code — unchanged
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
+
+documents = SimpleDirectoryReader("./papers").load_data()
+index = VectorStoreIndex.from_documents(documents)
+
+response = index.as_query_engine().query("What is attention?")
+print(response)
+
+stop_tracing()
+```
+
+### 4. See the Evidence
+
+Open [http://localhost:5000](http://localhost:5000) and watch your traces appear in real-time.
+
+---
+
+## What You'll See
+
+### Documents Tab
+- Every PDF, text file, and document loaded
+- Page counts and chunk counts
+- Click to expand and see all chunks with text previews
+
+### Queries Tab
+- Every query with retrieved chunks and similarity scores
+- Full LLM prompt and response
+- Token usage and latency
+- **Click "View Source"** to see chunks highlighted in the original PDF
+
+### Experiments
+- Organize runs into experiments
+- Filter by experiment
+- Compare "chunk-size-256" vs "chunk-size-512" side by side
+
+---
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Answer → Evidence** | Trace responses to exact chunks with scores |
+| **PDF Source Viewer** | Click any chunk to see it in the original document |
+| **Full LLM Capture** | Prompts, responses, tokens, latency |
+| **Experiment Tracking** | A/B test chunking strategies |
+| **Real-time Dashboard** | Watch traces appear live |
+| **Zero Config** | Just `init_tracing()` — everything else is automatic |
+
+---
+
+## Example: Research Papers
 
 ```python
 from sourcemapr import init_tracing, stop_tracing
 
-# Initialize tracing (connects to SourcemapR server)
-init_tracing(endpoint="http://localhost:5000")
+# Start tracing with an experiment name
+init_tracing(
+    endpoint="http://localhost:5000",
+    experiment="attention-paper-analysis"
+)
 
-# Your LlamaIndex code here...
-from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Settings
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
-# Load documents (automatically traced)
+# Configure
+Settings.node_parser = SentenceSplitter(chunk_size=512, chunk_overlap=50)
+Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+
+# Load papers
 documents = SimpleDirectoryReader("./data").load_data()
-
-# Create index (chunking and embeddings traced)
 index = VectorStoreIndex.from_documents(documents)
 
-# Query (retrieval and LLM calls traced)
-query_engine = index.as_query_engine()
-response = query_engine.query("What is RAG?")
+# Query
+engine = index.as_query_engine(similarity_top_k=3)
 
-# Stop tracing when done
+queries = [
+    "What is the attention mechanism?",
+    "How was Llama 2 trained?",
+    "What is retrieval augmented generation?",
+]
+
+for q in queries:
+    print(f"Q: {q}")
+    print(f"A: {engine.query(q)}\n")
+
 stop_tracing()
 ```
 
-### 3. View Results
+Now check the dashboard to see:
+- How many chunks were created from each paper
+- Which chunks were retrieved for each query
+- The exact prompts sent to the LLM
+- Full responses with token counts
 
-Open http://localhost:5000 in your browser to see:
-- Documents loaded and parsed
-- Chunks created with text preview
-- Embedding generation times
-- Query results with retrieved chunks
-- LLM prompts and responses
+---
 
 ## Experiment Tracking
 
-Organize your traces into experiments:
+Compare different RAG configurations:
 
 ```python
-from sourcemapr import init_tracing
+# Experiment 1: Small chunks
+init_tracing(endpoint="http://localhost:5000", experiment="small-chunks-256")
+Settings.node_parser = SentenceSplitter(chunk_size=256)
+# ... run queries ...
+stop_tracing()
 
-# Traces will be automatically assigned to this experiment
-init_tracing(
-    endpoint="http://localhost:5000",
-    experiment="chunking-strategy-v2"
-)
-```
-
-## What Gets Traced
-
-| Operation | Tracked Data |
-|-----------|--------------|
-| **Documents** | Filename, path, page count, text length |
-| **Chunks** | Index, text content, length, parent doc |
-| **Embeddings** | Model, dimensions, duration |
-| **Retrievals** | Query, results with scores, duration |
-| **LLM Calls** | Model, messages, response, tokens, duration |
-
-## API Reference
-
-### init_tracing
-
-```python
-init_tracing(
-    endpoint: str = "http://localhost:5000",
-    experiment: str = None  # Optional experiment name
-)
-```
-
-Initializes the tracing system and connects to the SourcemapR server.
-
-### stop_tracing
-
-```python
+# Experiment 2: Large chunks
+init_tracing(endpoint="http://localhost:5000", experiment="large-chunks-1024")
+Settings.node_parser = SentenceSplitter(chunk_size=1024)
+# ... run same queries ...
 stop_tracing()
 ```
 
-Stops tracing and flushes any pending data to the server.
+Use the experiment dropdown in the dashboard to compare results.
 
-### get_tracer
+---
+
+## What Gets Traced
+
+| Stage | What's Captured |
+|-------|-----------------|
+| **Document Loading** | Filename, path, page count |
+| **Parsing** | Full extracted text |
+| **Chunking** | Each chunk's text, index, page number |
+| **Retrieval** | Query, top-k chunks, similarity scores |
+| **LLM Calls** | Model, prompt, response, tokens, latency |
+
+---
+
+## CLI
+
+```bash
+sourcemapr server              # Start dashboard on :5000
+sourcemapr server --port 8080  # Custom port
+sourcemapr version             # Show version
+```
+
+---
+
+## API Reference
+
+### `init_tracing(endpoint, experiment)`
 
 ```python
-from sourcemapr import get_tracer
-
-tracer = get_tracer()
+init_tracing(
+    endpoint="http://localhost:5000",  # Server URL
+    experiment="my-experiment"          # Optional: group traces
+)
 ```
 
-Returns the current TraceStore instance for advanced usage.
+**Important:** Call `init_tracing()` *before* importing LlamaIndex for best results.
 
-## CLI Commands
+### `stop_tracing()`
 
-```bash
-# Start the server
-sourcemapr server
+Stop tracing and flush pending data. Always call before exit.
 
-# Start on a custom port
-sourcemapr server --port 8000
+---
 
-# Show version
-sourcemapr version
+## REST API
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/data` | All trace data |
+| `GET /api/stats` | Summary statistics |
+| `GET /api/documents` | List documents |
+| `GET /api/chunks` | List chunks |
+| `GET /api/retrievals` | List queries |
+| `GET /api/llm` | List LLM calls |
+| `GET /api/experiments` | List experiments |
+| `POST /api/clear` | Clear all data |
+
+Add `?experiment_id=X` to filter.
+
+---
+
+## Troubleshooting
+
+**Traces not showing?**
+1. Server running? `sourcemapr server`
+2. Correct endpoint? `init_tracing(endpoint="http://localhost:5000")`
+3. Called `stop_tracing()` before exit?
+
+**Only some operations traced?**
+```python
+# ✓ Correct: tracing first
+from sourcemapr import init_tracing
+init_tracing(endpoint="http://localhost:5000")
+from llama_index.core import VectorStoreIndex
+
+# ✗ Wrong: LlamaIndex imported first
+from llama_index.core import VectorStoreIndex
+from sourcemapr import init_tracing  # Too late!
 ```
 
-## Dashboard Features
+---
 
-- **Documents Tab**: View all loaded documents with page counts and chunk counts
-- **Queries Tab**: See all queries with retrieved chunks, LLM calls, and latency
-- **Experiments**: Filter data by experiment, create/rename/delete experiments
-- **Source Viewer**: Click on any chunk to see it highlighted in the original document
-
-## Platform API
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/data` | GET | All trace data |
-| `/api/stats` | GET | Summary stats |
-| `/api/traces` | POST | Receive trace (from lib) |
-| `/api/experiments` | GET/POST | List/create experiments |
-| `/api/experiments/{id}` | PUT/DELETE | Update/delete experiment |
-| `/api/documents` | GET | List documents |
-| `/api/chunks` | GET | List chunks |
-| `/api/retrievals` | GET | List retrievals |
-| `/api/llm` | GET | List LLM calls |
-| `/api/clear` | POST | Clear all data |
-
-## Development
-
-```bash
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Format code
-black sourcemapr
-ruff check sourcemapr
-```
-
-## Architecture
+## Project Structure
 
 ```
 sourcemapr/
-├── __init__.py       # Main exports (init_tracing, stop_tracing)
-├── tracer.py         # LlamaIndex instrumentation
-├── store.py          # Trace storage and sending
-├── cli.py            # CLI entry point
+├── __init__.py      # init_tracing, stop_tracing, get_tracer
+├── tracer.py        # LlamaIndex instrumentation
+├── store.py         # Sends traces to server
+├── cli.py           # CLI (sourcemapr server)
 └── server/
-    ├── app.py        # FastAPI server
-    ├── database.py   # SQLite storage
-    └── templates/    # Web dashboard
+    ├── app.py       # FastAPI server
+    ├── database.py  # SQLite storage
+    └── templates/   # Dashboard
 ```
 
-## How It Works
+---
 
-The library uses monkey-patching to hook into LlamaIndex classes:
+## Contributing
 
-1. `SimpleDirectoryReader.load_data` - tracks documents
-2. `SentenceSplitter.get_nodes_from_documents` - tracks chunks
-3. `VectorStoreIndex.from_documents` - tracks indexing
-4. `RetrieverQueryEngine.query` - tracks queries & retrievals
-5. `OpenAI.chat/complete` - tracks LLM calls
+```bash
+git clone https://github.com/yourusername/sourcemapr.git
+cd sourcemapr
+pip install -e ".[dev]"
+pytest
+```
 
-All hooks are installed automatically when you call `init_tracing()`.
+---
 
 ## License
 
 MIT
+
+---
+
+**Built for developers who are tired of print-debugging RAG pipelines.**
+
+[Website](https://yourusername.github.io/sourcemapr) · [GitHub](https://github.com/yourusername/sourcemapr) · [Issues](https://github.com/yourusername/sourcemapr/issues)
