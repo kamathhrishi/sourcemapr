@@ -18,7 +18,7 @@ To start the server:
     sourcemapr server
 """
 
-from sourcemapr.tracer import init_tracing, stop_tracing, get_tracer
+from sourcemapr.tracer import init_tracing, stop_tracing, get_tracer, get_langchain_handler
 
 __version__ = "0.1.0"
-__all__ = ["init_tracing", "stop_tracing", "get_tracer", "__version__"]
+__all__ = ["init_tracing", "stop_tracing", "get_tracer", "get_langchain_handler", "__version__"]

@@ -1,0 +1,400 @@
+"""
+LlamaIndex provider for SourcemapR.
+
+Instruments LlamaIndex components:
+- SimpleDirectoryReader (document loading)
+- SentenceSplitter (chunking)
+- VectorStoreIndex (indexing)
+- Query callbacks (retrieval + LLM)
+- HuggingFaceEmbedding (embeddings)
+"""
+
+import time
+from typing import Optional, Dict, Any
+
+from sourcemapr.providers.base import BaseProvider
+from sourcemapr.store import TraceStore
+
+
+class LlamaIndexProvider(BaseProvider):
+    """LlamaIndex instrumentation provider."""
+
+    name = "llamaindex"
+
+    def __init__(self, store: TraceStore):
+        super().__init__(store)
+        self._callback_handler = None
+        self._tracer_ref = None  # Reference to global tracer for patches
+
+    def is_available(self) -> bool:
+        try:
+            import llama_index.core
+            return True
+        except ImportError:
+            return False
+
+    def instrument(self) -> bool:
+        if self._instrumented:
+            return True
+
+        if not self.is_available():
+            return False
+
+        try:
+            self._setup_callbacks()
+            self._patch_directory_reader()
+            self._patch_sentence_splitter()
+            self._patch_vector_store_index()
+            self._patch_embeddings()
+            self._instrumented = True
+            print("[SourcemapR] LlamaIndex provider enabled")
+            return True
+        except Exception as e:
+            print(f"[SourcemapR] LlamaIndex provider error: {e}")
+            return False
+
+    def _setup_callbacks(self):
+        """Set up LlamaIndex callback handler for query tracking."""
+        from llama_index.core.callbacks import CallbackManager
+        from llama_index.core.callbacks.base import BaseCallbackHandler
+        from llama_index.core import Settings
+        from llama_index.core.callbacks.schema import CBEventType, EventPayload
+
+        store = self.store
+
+        class SourcemapRCallbackHandler(BaseCallbackHandler):
+            def __init__(self):
+                super().__init__(event_starts_to_ignore=[], event_ends_to_ignore=[])
+                self._query_data: Dict[str, Dict] = {}
+                self._llm_data: Dict[str, Dict] = {}
+
+            def on_event_start(self, event_type: CBEventType, payload: Optional[Dict] = None,
+                               event_id: str = "", parent_id: str = "", **kwargs):
+                if event_type == CBEventType.QUERY:
+                    query_str = ""
+                    if payload and EventPayload.QUERY_STR in payload:
+                        query_str = str(payload[EventPayload.QUERY_STR])
+                    self._query_data[event_id] = {
+                        "start_time": time.time(),
+                        "query_str": query_str
+                    }
+                    print(f"[SourcemapR] Query started: {query_str[:50]}...")
+
+                elif event_type == CBEventType.LLM:
+                    messages = []
+                    prompt = ""
+                    model = "unknown"
+                    temperature = None
+                    max_tokens = None
+
+                    if payload:
+                        messages = payload.get(EventPayload.MESSAGES, [])
+                        prompt = payload.get(EventPayload.PROMPT, "")
+                        serialized = payload.get(EventPayload.SERIALIZED, {})
+                        model = serialized.get('model', serialized.get('model_name', 'unknown'))
+                        temperature = serialized.get('temperature')
+                        max_tokens = serialized.get('max_tokens')
+
+                    self._llm_data[event_id] = {
+                        "start_time": time.time(),
+                        "messages": messages,
+                        "prompt": prompt,
+                        "model": model,
+                        "temperature": temperature,
+                        "max_tokens": max_tokens,
+                    }
+                    print(f"[SourcemapR] LLM call started: {model}")
+
+                return event_id
+
+            def on_event_end(self, event_type: CBEventType, payload: Optional[Dict] = None,
+                             event_id: str = "", **kwargs):
+                if event_type == CBEventType.QUERY:
+                    self._handle_query_end(event_id, payload)
+                elif event_type == CBEventType.LLM:
+                    self._handle_llm_end(event_id, payload)
+
+            def _handle_query_end(self, event_id: str, payload: Optional[Dict]):
+                query_data = self._query_data.pop(event_id, {"start_time": time.time(), "query_str": ""})
+                start_time = query_data["start_time"]
+                query_str = query_data["query_str"]
+                duration_ms = (time.time() - start_time) * 1000
+
+                source_nodes = []
+                response_text = ""
+
+                if payload and EventPayload.RESPONSE in payload:
+                    response_obj = payload[EventPayload.RESPONSE]
+                    source_nodes = getattr(response_obj, 'source_nodes', [])
+                    response_text = str(response_obj) if response_obj else ""
+
+                print(f"[SourcemapR] Query completed: '{query_str[:30]}...' with {len(source_nodes)} sources")
+
+                results = []
+                for i, n in enumerate(source_nodes):
+                    node = getattr(n, 'node', n)
+                    metadata = getattr(node, 'metadata', {}) if node else {}
+                    results.append({
+                        "chunk_id": node.node_id if hasattr(node, 'node_id') else str(i),
+                        "score": getattr(n, 'score', 0),
+                        "text": node.text[:500] if hasattr(node, 'text') else str(n)[:500],
+                        "doc_id": metadata.get('file_name', ''),
+                        "page_number": metadata.get('page_label'),
+                        "file_path": metadata.get('file_path', ''),
+                    })
+
+                store.log_retrieval(
+                    query=query_str,
+                    results=results,
+                    duration_ms=duration_ms,
+                    response=response_text
+                )
+
+            def _handle_llm_end(self, event_id: str, payload: Optional[Dict]):
+                llm_data = self._llm_data.pop(event_id, {
+                    "start_time": time.time(),
+                    "messages": [],
+                    "prompt": "",
+                    "model": "unknown",
+                    "temperature": None,
+                    "max_tokens": None,
+                })
+                duration_ms = (time.time() - llm_data["start_time"]) * 1000
+
+                response_text = ""
+                prompt_tokens = None
+                completion_tokens = None
+                total_tokens = None
+
+                if payload:
+                    response_obj = payload.get(EventPayload.RESPONSE)
+                    if response_obj:
+                        if hasattr(response_obj, 'text'):
+                            response_text = response_obj.text
+                        elif hasattr(response_obj, 'message'):
+                            msg = response_obj.message
+                            response_text = getattr(msg, 'content', str(msg))
+                        else:
+                            response_text = str(response_obj)
+
+                        # Extract token usage
+                        if hasattr(response_obj, 'raw') and response_obj.raw:
+                            raw = response_obj.raw
+                            if hasattr(raw, 'usage') and raw.usage:
+                                prompt_tokens = getattr(raw.usage, 'prompt_tokens', None)
+                                completion_tokens = getattr(raw.usage, 'completion_tokens', None)
+                                total_tokens = getattr(raw.usage, 'total_tokens', None)
+
+                # Format messages
+                messages_formatted = []
+                for msg in llm_data.get("messages", []):
+                    if hasattr(msg, 'role') and hasattr(msg, 'content'):
+                        role_val = msg.role
+                        if hasattr(role_val, 'value'):
+                            role_val = role_val.value
+                        messages_formatted.append({
+                            'role': str(role_val),
+                            'content': msg.content if isinstance(msg.content, str) else str(msg.content)
+                        })
+                    elif isinstance(msg, dict):
+                        messages_formatted.append(msg)
+
+                store.log_llm(
+                    model=llm_data.get("model", "unknown"),
+                    duration_ms=duration_ms,
+                    messages=messages_formatted if messages_formatted else None,
+                    prompt=llm_data.get("prompt") if not messages_formatted else None,
+                    response=response_text,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
+                    temperature=llm_data.get("temperature"),
+                    max_tokens=llm_data.get("max_tokens"),
+                    provider="llamaindex"
+                )
+                print(f"[SourcemapR] LLM call logged: {llm_data.get('model', 'unknown')} ({duration_ms:.0f}ms)")
+
+            def start_trace(self, trace_id: Optional[str] = None) -> str:
+                import uuid
+                return trace_id or str(uuid.uuid4())
+
+            def end_trace(self, trace_id: Optional[str] = None, trace_map: Optional[Dict] = None) -> None:
+                pass
+
+        self._callback_handler = SourcemapRCallbackHandler()
+
+        if Settings.callback_manager is None:
+            Settings.callback_manager = CallbackManager([self._callback_handler])
+        else:
+            Settings.callback_manager.add_handler(self._callback_handler)
+
+        print("[SourcemapR] Registered callback handler")
+
+    def _patch_directory_reader(self):
+        """Patch SimpleDirectoryReader.load_data."""
+        try:
+            from llama_index.core import SimpleDirectoryReader
+            original_load = SimpleDirectoryReader.load_data
+            store = self.store
+
+            def patched_load(self_reader, *args, **kwargs):
+                span = store.start_span("load_documents", kind="document")
+                try:
+                    result = original_load(self_reader, *args, **kwargs)
+
+                    docs_by_file = {}
+                    for doc in result:
+                        filename = doc.metadata.get('file_name', 'unknown')
+                        if filename not in docs_by_file:
+                            docs_by_file[filename] = {
+                                'file_path': doc.metadata.get('file_path', ''),
+                                'pages': []
+                            }
+                        docs_by_file[filename]['pages'].append(doc)
+
+                    store.end_span(span, attributes={
+                        "num_files": len(docs_by_file),
+                        "num_pages": len(result),
+                    })
+
+                    for filename, file_data in docs_by_file.items():
+                        full_text = "\n\n--- PAGE BREAK ---\n\n".join(
+                            [p.text for p in file_data['pages']]
+                        )
+
+                        store.log_document(
+                            doc_id=filename,
+                            filename=filename,
+                            file_path=file_data['file_path'],
+                            text_length=len(full_text),
+                            num_pages=len(file_data['pages'])
+                        )
+
+                        store.log_parsed(
+                            doc_id=filename,
+                            filename=filename,
+                            text=full_text
+                        )
+
+                    return result
+                except Exception as e:
+                    store.end_span(span, status="error")
+                    raise
+
+            SimpleDirectoryReader.load_data = patched_load
+            self._original_handlers['SimpleDirectoryReader.load_data'] = original_load
+        except ImportError:
+            pass
+
+    def _patch_sentence_splitter(self):
+        """Patch SentenceSplitter.get_nodes_from_documents."""
+        try:
+            from llama_index.core.node_parser import SentenceSplitter
+            original_parse = SentenceSplitter.get_nodes_from_documents
+            store = self.store
+
+            def patched_parse(self_parser, documents, *args, **kwargs):
+                span = store.start_span("chunk_documents", kind="chunking")
+                try:
+                    result = original_parse(self_parser, documents, *args, **kwargs)
+                    store.end_span(span, attributes={
+                        "num_nodes": len(result),
+                        "chunk_size": getattr(self_parser, 'chunk_size', 0),
+                    })
+
+                    for i, node in enumerate(result):
+                        metadata = node.metadata or {}
+                        doc_id = metadata.get('file_name', node.ref_doc_id or '')
+
+                        store.log_chunk(
+                            chunk_id=node.node_id,
+                            doc_id=doc_id,
+                            index=i,
+                            text=node.text,
+                            page_number=int(metadata.get('page_label')) if metadata.get('page_label') else None,
+                            start_char_idx=node.start_char_idx,
+                            end_char_idx=node.end_char_idx,
+                            metadata=metadata
+                        )
+                    return result
+                except Exception as e:
+                    store.end_span(span, status="error")
+                    raise
+
+            SentenceSplitter.get_nodes_from_documents = patched_parse
+            self._original_handlers['SentenceSplitter.get_nodes_from_documents'] = original_parse
+        except ImportError:
+            pass
+
+    def _patch_vector_store_index(self):
+        """Patch VectorStoreIndex.from_documents."""
+        try:
+            from llama_index.core import VectorStoreIndex
+            original_from_docs = VectorStoreIndex.from_documents.__func__
+            store = self.store
+
+            @classmethod
+            def patched_from_docs(cls, documents, *args, **kwargs):
+                span = store.start_span("create_index", kind="indexing")
+                try:
+                    result = original_from_docs(cls, documents, *args, **kwargs)
+                    store.end_span(span, attributes={"num_documents": len(documents)})
+                    return result
+                except Exception as e:
+                    store.end_span(span, status="error")
+                    raise
+
+            VectorStoreIndex.from_documents = patched_from_docs
+            self._original_handlers['VectorStoreIndex.from_documents'] = original_from_docs
+        except ImportError:
+            pass
+
+    def _patch_embeddings(self):
+        """Patch HuggingFaceEmbedding."""
+        try:
+            from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+            original_embed = HuggingFaceEmbedding._get_text_embedding
+            store = self.store
+
+            def patched_embed(self_emb, text, *args, **kwargs):
+                start = time.time()
+                result = original_embed(self_emb, text, *args, **kwargs)
+                duration = (time.time() - start) * 1000
+                store.log_embedding(
+                    chunk_id="",
+                    model=getattr(self_emb, 'model_name', 'unknown'),
+                    dim=len(result),
+                    duration_ms=duration
+                )
+                return result
+
+            HuggingFaceEmbedding._get_text_embedding = patched_embed
+            self._original_handlers['HuggingFaceEmbedding._get_text_embedding'] = original_embed
+        except ImportError:
+            pass
+
+    def uninstrument(self) -> None:
+        """Restore original methods."""
+        for name, original in self._original_handlers.items():
+            try:
+                parts = name.split('.')
+                if len(parts) == 2:
+                    cls_name, method_name = parts
+                    # Restore based on class name
+                    if cls_name == 'SimpleDirectoryReader':
+                        from llama_index.core import SimpleDirectoryReader
+                        setattr(SimpleDirectoryReader, method_name, original)
+                    elif cls_name == 'SentenceSplitter':
+                        from llama_index.core.node_parser import SentenceSplitter
+                        setattr(SentenceSplitter, method_name, original)
+                    elif cls_name == 'VectorStoreIndex':
+                        from llama_index.core import VectorStoreIndex
+                        setattr(VectorStoreIndex, method_name, original)
+                    elif cls_name == 'HuggingFaceEmbedding':
+                        from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+                        setattr(HuggingFaceEmbedding, method_name, original)
+            except Exception:
+                pass
+
+        self._original_handlers.clear()
+        self._instrumented = False
