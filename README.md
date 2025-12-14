@@ -28,7 +28,9 @@ Most "LLM observability" tools stop at tracing calls and showing retrieved text.
 ### 1. Install
 
 ```bash
-pip install sourcemapr
+git clone https://github.com/kamathhrishi/sourcemapr.git
+cd sourcemapr
+pip install -e .
 ```
 
 ### 2. Start the Dashboard
@@ -263,7 +265,7 @@ sourcemapr/
 ## Contributing
 
 ```bash
-git clone https://github.com/yourusername/sourcemapr.git
+git clone https://github.com/kamathhrishi/sourcemapr.git
 cd sourcemapr
 pip install -e ".[dev]"
 pytest
@@ -279,4 +281,4 @@ MIT
 
 **Built for developers who are tired of print-debugging RAG pipelines.**
 
-[Website](https://yourusername.github.io/sourcemapr) · [GitHub](https://github.com/yourusername/sourcemapr) · [Issues](https://github.com/yourusername/sourcemapr/issues)
+[Website](https://yourusername.github.io/sourcemapr) · [GitHub](https://github.com/kamathhrishi/sourcemapr) · [Issues](https://github.com/kamathhrishi/sourcemapr/issues)

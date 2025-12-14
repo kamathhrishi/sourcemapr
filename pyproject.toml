@@ -47,10 +47,10 @@ llamaindex = [
 sourcemapr = "sourcemapr.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/sourcemapr"
-Documentation = "https://github.com/yourusername/sourcemapr#readme"
-Repository = "https://github.com/yourusername/sourcemapr"
-Issues = "https://github.com/yourusername/sourcemapr/issues"
+Homepage = "https://github.com/kamathhrishi/sourcemapr"
+Documentation = "https://github.com/kamathhrishi/sourcemapr#readme"
+Repository = "https://github.com/kamathhrishi/sourcemapr"
+Issues = "https://github.com/kamathhrishi/sourcemapr/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
