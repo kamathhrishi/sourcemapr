@@ -190,6 +190,19 @@ def get_db():
         conn.close()
 
 
+def ensure_tables_exist():
+    """Ensure all tables exist, recreating them if needed."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        # Check if traces table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='traces'")
+        if not cursor.fetchone():
+            print("[SourcemapR] Database tables missing, reinitializing...")
+            init_db()
+            return True
+    return False
+
+
 # ========== Experiment CRUD ==========
 
 def create_experiment(name: str, description: str = None) -> Dict:
@@ -855,6 +868,9 @@ def clear_all_data() -> None:
     """Clear all data from all tables (except experiments)."""
     global _default_experiment_id_cache
     _default_experiment_id_cache = None  # Reset cache
+
+    # Ensure tables exist first
+    ensure_tables_exist()
 
     with get_db() as conn:
         cursor = conn.cursor()

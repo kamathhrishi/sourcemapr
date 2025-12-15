@@ -34,6 +34,21 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup."""
+    db.init_db()
+
+
+@app.middleware("http")
+async def ensure_db_middleware(request: Request, call_next):
+    """Ensure database tables exist before processing requests."""
+    # Only check for API routes that need the database
+    if request.url.path.startswith("/api/"):
+        db.ensure_tables_exist()
+    return await call_next(request)
+
+
 # ========== Pydantic Models ==========
 
 class ExperimentCreate(BaseModel):
@@ -321,6 +336,9 @@ async def get_original_file(file_path: str):
 
 def run_server(host: str = "0.0.0.0", port: int = 5000):
     """Run the SourcemapR server."""
+    # Ensure database is initialized
+    db.init_db()
+
     print("\n" + "=" * 50)
     print("SourcemapR - RAG Observability Platform")
     print("=" * 50)

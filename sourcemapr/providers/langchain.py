@@ -213,6 +213,7 @@ class LangChainProvider(BaseProvider):
                 parent_run_id: Optional[UUID] = None,
                 **kwargs: Any,
             ) -> None:
+                import os
                 run_id_str = str(run_id)
                 retriever_data = self._retriever_starts.pop(run_id_str, {
                     "start_time": time.time(),
@@ -223,13 +224,18 @@ class LangChainProvider(BaseProvider):
                 results = []
                 for i, doc in enumerate(documents):
                     metadata = getattr(doc, 'metadata', {})
+                    # Get source path and convert to absolute
+                    source = metadata.get('source', metadata.get('file_path', ''))
+                    abs_path = os.path.abspath(source) if source else ''
+                    filename = os.path.basename(source) if source else ''
+
                     results.append({
-                        "chunk_id": metadata.get('chunk_id', str(i)),
+                        "chunk_id": metadata.get('chunk_id', f"{filename}_{i}"),
                         "score": metadata.get('score', 0),
                         "text": doc.page_content[:500] if hasattr(doc, 'page_content') else str(doc)[:500],
-                        "doc_id": metadata.get('source', metadata.get('file_name', '')),
+                        "doc_id": filename,  # Use filename to match document
                         "page_number": metadata.get('page', metadata.get('page_label')),
-                        "file_path": metadata.get('file_path', ''),
+                        "file_path": abs_path,
                     })
 
                 store.log_retrieval(
@@ -253,28 +259,41 @@ class LangChainProvider(BaseProvider):
 
     def _patch_document_loaders(self):
         """Patch common document loaders."""
+        import os
         store = self.store
+        logged_sources = set()  # Track what we've already logged to avoid duplicates
 
-        # Patch PyPDFLoader
-        try:
-            from langchain_community.document_loaders import PyPDFLoader
-            original_load = PyPDFLoader.load
+        def log_documents_from_result(result, loader_instance=None, loader_name="unknown"):
+            """Helper to log documents from loader results."""
+            if not result:
+                return
 
-            def patched_load(self_loader, *args, **kwargs):
-                result = original_load(self_loader, *args, **kwargs)
+            docs_by_source = {}
+            for doc in result:
+                source = doc.metadata.get('source', 'unknown')
+                if source not in docs_by_source:
+                    docs_by_source[source] = []
+                docs_by_source[source].append(doc)
 
-                filename = getattr(self_loader, 'file_path', 'unknown')
-                if isinstance(filename, str):
-                    filename = filename.split('/')[-1].split('\\')[-1]
+            for source, docs in docs_by_source.items():
+                # Skip if already logged this source
+                if source in logged_sources:
+                    continue
+                logged_sources.add(source)
 
-                full_text = "\n\n".join([doc.page_content for doc in result])
+                # Convert to absolute path for file serving
+                abs_path = os.path.abspath(source) if source != 'unknown' else source
+                filename = os.path.basename(source) if source != 'unknown' else 'unknown'
+
+                # Join page content with page breaks for better readability
+                full_text = "\n\n--- PAGE BREAK ---\n\n".join([d.page_content for d in docs])
 
                 store.log_document(
                     doc_id=filename,
                     filename=filename,
-                    file_path=getattr(self_loader, 'file_path', ''),
+                    file_path=abs_path,
                     text_length=len(full_text),
-                    num_pages=len(result)
+                    num_pages=len(docs)
                 )
 
                 store.log_parsed(
@@ -282,11 +301,37 @@ class LangChainProvider(BaseProvider):
                     filename=filename,
                     text=full_text
                 )
+                print(f"[SourcemapR] Document loaded: {filename} ({len(docs)} pages, path: {abs_path})")
 
+        # Patch PyPDFLoader
+        try:
+            from langchain_community.document_loaders import PyPDFLoader
+            original_load = PyPDFLoader.load
+
+            def patched_pypdf_load(self_loader, *args, **kwargs):
+                result = original_load(self_loader, *args, **kwargs)
+                log_documents_from_result(result, self_loader, "PyPDFLoader")
                 return result
 
-            PyPDFLoader.load = patched_load
+            PyPDFLoader.load = patched_pypdf_load
             self._original_handlers['PyPDFLoader.load'] = original_load
+        except ImportError:
+            pass
+
+        # Patch PyPDFLoader.lazy_load (used by DirectoryLoader)
+        try:
+            from langchain_community.document_loaders import PyPDFLoader
+            if hasattr(PyPDFLoader, 'lazy_load'):
+                original_lazy_load = PyPDFLoader.lazy_load
+
+                def patched_pypdf_lazy_load(self_loader, *args, **kwargs):
+                    result = list(original_lazy_load(self_loader, *args, **kwargs))
+                    log_documents_from_result(result, self_loader, "PyPDFLoader.lazy_load")
+                    for doc in result:
+                        yield doc
+
+                PyPDFLoader.lazy_load = patched_pypdf_lazy_load
+                self._original_handlers['PyPDFLoader.lazy_load'] = original_lazy_load
         except ImportError:
             pass
 
@@ -295,56 +340,65 @@ class LangChainProvider(BaseProvider):
             from langchain_community.document_loaders import DirectoryLoader
             original_load = DirectoryLoader.load
 
-            def patched_load(self_loader, *args, **kwargs):
+            def patched_directory_load(self_loader, *args, **kwargs):
                 result = original_load(self_loader, *args, **kwargs)
-
-                docs_by_source = {}
-                for doc in result:
-                    source = doc.metadata.get('source', 'unknown')
-                    if source not in docs_by_source:
-                        docs_by_source[source] = []
-                    docs_by_source[source].append(doc)
-
-                for source, docs in docs_by_source.items():
-                    filename = source.split('/')[-1].split('\\')[-1]
-                    full_text = "\n\n".join([d.page_content for d in docs])
-
-                    store.log_document(
-                        doc_id=filename,
-                        filename=filename,
-                        file_path=source,
-                        text_length=len(full_text),
-                        num_pages=len(docs)
-                    )
-
-                    store.log_parsed(
-                        doc_id=filename,
-                        filename=filename,
-                        text=full_text
-                    )
-
+                log_documents_from_result(result, self_loader, "DirectoryLoader")
                 return result
 
-            DirectoryLoader.load = patched_load
+            DirectoryLoader.load = patched_directory_load
             self._original_handlers['DirectoryLoader.load'] = original_load
+        except ImportError:
+            pass
+
+        # Patch TextLoader
+        try:
+            from langchain_community.document_loaders import TextLoader
+            original_load = TextLoader.load
+
+            def patched_text_load(self_loader, *args, **kwargs):
+                result = original_load(self_loader, *args, **kwargs)
+                log_documents_from_result(result, self_loader, "TextLoader")
+                return result
+
+            TextLoader.load = patched_text_load
+            self._original_handlers['TextLoader.load'] = original_load
+        except ImportError:
+            pass
+
+        # Patch UnstructuredFileLoader
+        try:
+            from langchain_community.document_loaders import UnstructuredFileLoader
+            original_load = UnstructuredFileLoader.load
+
+            def patched_unstructured_load(self_loader, *args, **kwargs):
+                result = original_load(self_loader, *args, **kwargs)
+                log_documents_from_result(result, self_loader, "UnstructuredFileLoader")
+                return result
+
+            UnstructuredFileLoader.load = patched_unstructured_load
+            self._original_handlers['UnstructuredFileLoader.load'] = original_load
         except ImportError:
             pass
 
     def _patch_text_splitters(self):
         """Patch text splitters."""
+        import os
         store = self.store
 
-        try:
-            from langchain_text_splitters import RecursiveCharacterTextSplitter
-            original_split = RecursiveCharacterTextSplitter.split_documents
-
+        def create_patched_split(original_split, splitter_name):
+            """Create a patched split_documents method."""
             def patched_split(self_splitter, documents, *args, **kwargs):
                 result = original_split(self_splitter, documents, *args, **kwargs)
 
                 for i, doc in enumerate(result):
                     metadata = doc.metadata or {}
                     source = metadata.get('source', '')
-                    filename = source.split('/')[-1].split('\\')[-1] if source else ''
+                    abs_path = os.path.abspath(source) if source else ''
+                    filename = os.path.basename(source) if source else ''
+
+                    # Include file_path in metadata for chunk linking
+                    chunk_metadata = dict(metadata)
+                    chunk_metadata['file_path'] = abs_path
 
                     store.log_chunk(
                         chunk_id=f"{filename}_{i}",
@@ -352,13 +406,64 @@ class LangChainProvider(BaseProvider):
                         index=i,
                         text=doc.page_content,
                         page_number=metadata.get('page'),
-                        metadata=metadata
+                        metadata=chunk_metadata
                     )
 
+                print(f"[SourcemapR] {splitter_name}: {len(result)} chunks created")
                 return result
+            return patched_split
 
-            RecursiveCharacterTextSplitter.split_documents = patched_split
-            self._original_handlers['RecursiveCharacterTextSplitter.split_documents'] = original_split
+        # Patch RecursiveCharacterTextSplitter from langchain_text_splitters
+        try:
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
+            original = RecursiveCharacterTextSplitter.split_documents
+            RecursiveCharacterTextSplitter.split_documents = create_patched_split(original, "RecursiveCharacterTextSplitter")
+            self._original_handlers['langchain_text_splitters.RecursiveCharacterTextSplitter.split_documents'] = original
+            print("[SourcemapR] Patched RecursiveCharacterTextSplitter (langchain_text_splitters)")
+        except ImportError:
+            pass
+
+        # Also patch from langchain.text_splitter (legacy import path)
+        try:
+            from langchain.text_splitter import RecursiveCharacterTextSplitter as LegacyRecursive
+            # Only patch if it's a different class
+            if not hasattr(LegacyRecursive.split_documents, '_sourcemapr_patched'):
+                original = LegacyRecursive.split_documents
+                patched = create_patched_split(original, "RecursiveCharacterTextSplitter")
+                patched._sourcemapr_patched = True
+                LegacyRecursive.split_documents = patched
+                self._original_handlers['langchain.text_splitter.RecursiveCharacterTextSplitter.split_documents'] = original
+        except ImportError:
+            pass
+
+        # Patch CharacterTextSplitter
+        try:
+            from langchain_text_splitters import CharacterTextSplitter
+            original = CharacterTextSplitter.split_documents
+            CharacterTextSplitter.split_documents = create_patched_split(original, "CharacterTextSplitter")
+            self._original_handlers['langchain_text_splitters.CharacterTextSplitter.split_documents'] = original
+        except ImportError:
+            pass
+
+        # Patch TokenTextSplitter
+        try:
+            from langchain_text_splitters import TokenTextSplitter
+            original = TokenTextSplitter.split_documents
+            TokenTextSplitter.split_documents = create_patched_split(original, "TokenTextSplitter")
+            self._original_handlers['langchain_text_splitters.TokenTextSplitter.split_documents'] = original
+        except ImportError:
+            pass
+
+        # Patch base TextSplitter class (split_documents is often inherited)
+        try:
+            from langchain_text_splitters.base import TextSplitter
+            if not hasattr(TextSplitter.split_documents, '_sourcemapr_patched'):
+                original = TextSplitter.split_documents
+                patched = create_patched_split(original, "TextSplitter")
+                patched._sourcemapr_patched = True
+                TextSplitter.split_documents = patched
+                self._original_handlers['langchain_text_splitters.base.TextSplitter.split_documents'] = original
+                print("[SourcemapR] Patched TextSplitter base class")
         except ImportError:
             pass
 
@@ -379,6 +484,12 @@ class LangChainProvider(BaseProvider):
                     elif cls_name == 'DirectoryLoader':
                         from langchain_community.document_loaders import DirectoryLoader
                         setattr(DirectoryLoader, method_name, original)
+                    elif cls_name == 'TextLoader':
+                        from langchain_community.document_loaders import TextLoader
+                        setattr(TextLoader, method_name, original)
+                    elif cls_name == 'UnstructuredFileLoader':
+                        from langchain_community.document_loaders import UnstructuredFileLoader
+                        setattr(UnstructuredFileLoader, method_name, original)
                     elif cls_name == 'RecursiveCharacterTextSplitter':
                         from langchain_text_splitters import RecursiveCharacterTextSplitter
                         setattr(RecursiveCharacterTextSplitter, method_name, original)

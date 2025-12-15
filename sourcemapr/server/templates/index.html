@@ -602,11 +602,47 @@
 
             // Render experiment selection list
             updateExperimentSelectList();
+
+            // Auto-select "All Experiments" if there's any data, otherwise first experiment
+            if (allData.experiments.length > 0) {
+                const hasAnyData = allData.experiments.some(e =>
+                    (e.doc_count > 0 || e.retrieval_count > 0 || e.llm_count > 0)
+                );
+                if (hasAnyData) {
+                    enterExperiment(null); // "All Experiments"
+                } else {
+                    enterExperiment(allData.experiments[0].id);
+                }
+            }
         }
 
         function updateExperimentSelectList() {
             const experiments = allData.experiments || [];
             const listEl = document.getElementById('experiment-select-list');
+
+            // Calculate totals for "All" option
+            const totalDocs = experiments.reduce((sum, e) => sum + (e.doc_count || 0), 0);
+            const totalQueries = experiments.reduce((sum, e) => sum + (e.retrieval_count || 0), 0);
+            const totalLlm = experiments.reduce((sum, e) => sum + (e.llm_count || 0), 0);
+
+            // "All Experiments" option
+            const allOption = `
+                <button onclick="enterExperiment(null)" class="w-full text-left px-4 py-4 hover:bg-apple-bg transition-colors flex items-center gap-4 border-b border-apple-border">
+                    <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i data-lucide="layers" class="w-5 h-5 text-blue-600"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-medium text-apple-text">All Experiments</h3>
+                        <p class="text-sm text-apple-secondary truncate">View all data across experiments</p>
+                        <div class="flex items-center gap-3 mt-1 text-xs text-apple-tertiary">
+                            <span>${totalDocs} docs</span>
+                            <span>${totalQueries} queries</span>
+                            <span>${totalLlm} LLM calls</span>
+                        </div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-apple-tertiary flex-shrink-0"></i>
+                </button>
+            `;
 
             if (!experiments.length) {
                 listEl.innerHTML = `
@@ -615,7 +651,7 @@
                     </div>
                 `;
             } else {
-                listEl.innerHTML = experiments.map(exp => `
+                listEl.innerHTML = allOption + experiments.map(exp => `
                     <button onclick="enterExperiment(${exp.id})" class="w-full text-left px-4 py-4 hover:bg-apple-bg transition-colors flex items-center gap-4">
                         <div class="w-10 h-10 ${exp.name === 'Default' ? 'bg-gray-100' : 'bg-violet-50'} rounded-lg flex items-center justify-center flex-shrink-0">
                             <i data-lucide="${exp.name === 'Default' ? 'inbox' : 'flask-conical'}" class="w-5 h-5 ${exp.name === 'Default' ? 'text-gray-600' : 'text-violet-600'}"></i>
@@ -638,8 +674,8 @@
 
         function enterExperiment(expId) {
             currentExperimentId = expId;
-            const exp = (allData.experiments || []).find(e => e.id === expId);
-            document.getElementById('current-experiment-name').textContent = exp?.name || 'Experiment';
+            const exp = expId ? (allData.experiments || []).find(e => e.id === expId) : null;
+            document.getElementById('current-experiment-name').textContent = exp?.name || 'All Experiments';
 
             // Hide experiment selection, show dashboard
             document.getElementById('experiment-select-screen').classList.add('hidden');
@@ -870,12 +906,17 @@
         }
 
         async function refreshData() {
-            if (!currentExperimentId) return; // Require experiment to be selected
-
             try {
-                const url = `/api/data?experiment_id=${currentExperimentId}`;
+                // If no experiment selected, fetch all data
+                const url = currentExperimentId
+                    ? `/api/data?experiment_id=${currentExperimentId}`
+                    : '/api/data';
                 const res = await fetch(url);
-                allData = await res.json();
+                const newData = await res.json();
+                // Preserve experiments list when refreshing
+                const experiments = allData.experiments;
+                allData = newData;
+                allData.experiments = experiments;
                 updateUI();
             } catch (e) {
                 console.error('Error:', e);

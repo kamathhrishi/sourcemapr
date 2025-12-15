@@ -67,6 +67,29 @@ See [Supported Features](sourcemapr/providers/README.md) for details.
 
 ---
 
+## CLI Commands
+
+```bash
+# Server management
+sourcemapr server            # Start server (foreground)
+sourcemapr server -b         # Start server in background
+sourcemapr server -p 8080    # Start on custom port
+sourcemapr stop              # Stop running server
+sourcemapr restart           # Restart server
+sourcemapr status            # Check if server is running
+
+# Data management
+sourcemapr clear             # Clear all trace data (with confirmation)
+sourcemapr clear -y          # Clear without confirmation
+sourcemapr init              # Initialize database
+sourcemapr init --reset      # Delete and recreate database
+
+# Info
+sourcemapr version           # Show version
+```
+
+---
+
 ## Examples
 
 ```bash
