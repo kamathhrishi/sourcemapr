@@ -6,6 +6,36 @@
   <title>SourceMapR — Evidence observability for RAG</title>
   <meta name="description" content="SourceMapR traces answers back to evidence, and evidence back to raw documents. See what your RAG system actually saw." />
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .gradient-text {
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .framework-card:hover {
+      transform: translateY(-2px);
+      transition: all 0.2s ease;
+    }
+    .pipeline-step {
+      position: relative;
+    }
+    .pipeline-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      right: -1.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 1rem;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(99, 102, 241, 0.5), rgba(168, 85, 247, 0.5));
+    }
+    @media (max-width: 768px) {
+      .pipeline-step:not(:last-child)::after {
+        display: none;
+      }
+    }
+  </style>
 </head>
 
 <body class="bg-zinc-950 text-zinc-100">
@@ -19,8 +49,16 @@
   <header class="relative">
     <nav class="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
       <div class="flex items-center gap-3">
-        <div class="h-9 w-9 rounded-xl bg-white/10 ring-1 ring-white/15 grid place-items-center">
-          <span class="text-sm font-bold tracking-tight">SM</span>
+        <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ring-1 ring-white/15 grid place-items-center shadow-lg shadow-indigo-500/20">
+          <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <circle cx="10" cy="13" r="2" fill="currentColor" stroke="none"/>
+            <circle cx="16" cy="16" r="2" fill="currentColor" stroke="none"/>
+            <path d="M10 13 L13 14.5 L16 16" stroke-width="1.5"/>
+            <circle cx="8" cy="18" r="1.5" fill="currentColor" stroke="none"/>
+            <path d="M10 13 L8 18" stroke-width="1.5"/>
+          </svg>
         </div>
         <div class="font-semibold tracking-tight">SourceMapR</div>
         <span class="ml-2 hidden rounded-full bg-white/5 px-2 py-1 text-xs text-zinc-300 ring-1 ring-white/10 sm:inline">
@@ -29,18 +67,20 @@
       </div>
 
       <div class="hidden items-center gap-6 text-sm text-zinc-300 md:flex">
-        <a href="#why" class="hover:text-white">Why</a>
+        <a href="#frameworks" class="hover:text-white">Frameworks</a>
         <a href="#features" class="hover:text-white">Features</a>
-        <a href="#workflow" class="hover:text-white">Workflow</a>
-        <a href="#oss" class="hover:text-white">Open Source</a>
+        <a href="#how-it-works" class="hover:text-white">How it works</a>
+        <a href="#get-started" class="hover:text-white">Get Started</a>
       </div>
 
       <div class="flex items-center gap-3">
         <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="hidden rounded-xl bg-white/5 px-4 py-2 text-sm text-zinc-200 ring-1 ring-white/10 hover:bg-white/10 sm:inline">
           Docs
         </a>
-        <a href="https://github.com/kamathhrishi/sourcemapr" class="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-400">
-          GitHub
+        <a href="https://github.com/kamathhrishi/sourcemapr" class="inline-flex items-center gap-2 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/10 hover:bg-zinc-700 transition">
+          <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          <span>Star</span>
+          <img src="https://img.shields.io/github/stars/kamathhrishi/sourcemapr?style=social&label=" alt="GitHub stars" class="h-4" />
         </a>
       </div>
     </nav>
@@ -52,45 +92,72 @@
       <div class="grid gap-10 lg:grid-cols-2 lg:items-center">
         <div>
           <p class="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-zinc-300 ring-1 ring-white/10">
-            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             Evidence observability for RAG systems
           </p>
 
           <h1 class="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">
-            See what your RAG system <span class="text-indigo-300">actually saw</span>.
+            See what your RAG system <span class="gradient-text">actually saw</span>.
           </h1>
 
           <p class="mt-5 max-w-xl text-base leading-relaxed text-zinc-300">
             SourceMapR traces every answer back to the exact document evidence that produced it —
-            and shows how that evidence was created (parse → structure → chunk → retrieve → answer).
+            and shows how that evidence was created (parse → chunk → embed → retrieve → answer).
           </p>
 
           <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <a href="#get-started" class="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-zinc-200">
+            <a href="#get-started" class="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-zinc-200 transition">
               Get started
             </a>
-            <a href="#demo" class="rounded-xl bg-white/5 px-5 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10">
+            <a href="#how-it-works" class="rounded-xl bg-white/5 px-5 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10 transition">
               View workflow
             </a>
-            <p class="text-xs text-zinc-400">
-              Drop-in instrumentation for LlamaIndex.
-            </p>
           </div>
 
-          <div class="mt-10 flex flex-wrap gap-2 text-xs text-zinc-300">
+          <!-- Framework badges -->
+          <div class="mt-8 flex flex-col gap-3">
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-zinc-500 w-20">Frameworks:</span>
+              <div class="flex gap-2">
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-purple-500/10 px-3 py-1 text-xs font-medium text-purple-300 ring-1 ring-purple-500/20">
+                  <img src="https://avatars.githubusercontent.com/u/130722866?s=20" alt="LlamaIndex" class="h-4 w-4 rounded-sm" />
+                  LlamaIndex
+                </span>
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/20">
+                  <img src="https://avatars.githubusercontent.com/u/126733545?s=20" alt="LangChain" class="h-4 w-4 rounded-sm" />
+                  LangChain
+                </span>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-zinc-500 w-20">LLM API:</span>
+              <div class="flex gap-2">
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 px-3 py-1 text-xs font-medium text-zinc-300 ring-1 ring-zinc-500/20">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.4850 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+                  OpenAI
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap gap-2 text-xs text-zinc-300">
             <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Answer → Evidence</span>
             <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">PDF overlays</span>
-            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Pipeline diffs</span>
-            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Query replay</span>
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Chunk inspection</span>
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">LLM tracking</span>
           </div>
         </div>
 
         <!-- Mock UI card -->
         <div class="relative">
-          <div class="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+          <div class="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10 backdrop-blur-sm">
             <div class="flex items-center justify-between">
-              <div class="text-sm font-medium">Answer Inspector</div>
-              <div class="text-xs text-zinc-400">Session · 12:41:09</div>
+              <div class="flex items-center gap-2">
+                <div class="h-2.5 w-2.5 rounded-full bg-red-500/80"></div>
+                <div class="h-2.5 w-2.5 rounded-full bg-yellow-500/80"></div>
+                <div class="h-2.5 w-2.5 rounded-full bg-green-500/80"></div>
+              </div>
+              <div class="text-xs text-zinc-400">SourceMapR Dashboard</div>
             </div>
 
             <div class="mt-4 grid gap-3">
@@ -154,27 +221,233 @@
     </div>
   </section>
 
-  <!-- Why -->
-  <section id="why" class="relative border-t border-white/10">
+  <!-- Supported Frameworks -->
+  <section id="frameworks" class="relative border-t border-white/10">
     <div class="mx-auto max-w-6xl px-6 py-16">
-      <h2 class="text-2xl font-semibold tracking-tight">Why SourceMapR</h2>
-      <p class="mt-3 max-w-3xl text-zinc-300">
-        Most "LLM observability" tools stop at tracing calls and showing retrieved text.
-        SourceMapR goes deeper: it treats documents as structured evidence and exposes the full lineage.
-      </p>
+      <div class="text-center">
+        <h2 class="text-2xl font-semibold tracking-tight">Supported Frameworks</h2>
+        <p class="mt-3 text-zinc-400">Drop-in instrumentation for the most popular RAG frameworks</p>
+      </div>
 
-      <div class="mt-10 grid gap-4 md:grid-cols-3">
-        <div class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
-          <div class="text-sm font-semibold">Debug ingestion</div>
-          <p class="mt-2 text-sm text-zinc-300">See every document, how it was parsed, chunked, and embedded. Catch issues before they hit production.</p>
+      <div class="mt-10 grid gap-6 md:grid-cols-2">
+        <!-- LlamaIndex -->
+        <div class="framework-card group rounded-2xl bg-gradient-to-br from-purple-500/5 to-purple-600/10 p-6 ring-1 ring-purple-500/20 hover:ring-purple-500/40 transition-all">
+          <div class="flex items-start justify-between">
+            <div class="flex items-center gap-4">
+              <div class="flex h-14 w-14 items-center justify-center rounded-xl bg-white/5 ring-1 ring-white/10 overflow-hidden">
+                <img src="https://avatars.githubusercontent.com/u/130722866?s=200" alt="LlamaIndex" class="h-10 w-10 object-contain" />
+              </div>
+              <div>
+                <h3 class="text-lg font-semibold text-purple-200">LlamaIndex</h3>
+                <p class="text-sm text-zinc-400">Full pipeline instrumentation</p>
+              </div>
+            </div>
+            <span class="rounded-full bg-purple-500/20 px-2 py-0.5 text-xs font-medium text-purple-300">Supported</span>
+          </div>
+
+          <div class="mt-5 space-y-2">
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              SimpleDirectoryReader (document loading)
+            </div>
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              SentenceSplitter & NodeParser (chunking)
+            </div>
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              VectorStoreIndex (indexing)
+            </div>
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              Query callbacks (retrieval + LLM)
+            </div>
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              HuggingFace embeddings
+            </div>
+          </div>
         </div>
-        <div class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
-          <div class="text-sm font-semibold">Debug retrieval</div>
-          <p class="mt-2 text-sm text-zinc-300">Inspect which chunks were retrieved, their scores, and click through to see them in the original PDF.</p>
+
+        <!-- LangChain -->
+        <div class="framework-card group rounded-2xl bg-gradient-to-br from-emerald-500/5 to-teal-600/10 p-6 ring-1 ring-emerald-500/20 hover:ring-emerald-500/40 transition-all">
+          <div class="flex items-start justify-between">
+            <div class="flex items-center gap-4">
+              <div class="flex h-14 w-14 items-center justify-center rounded-xl bg-white/5 ring-1 ring-white/10 overflow-hidden">
+                <img src="https://avatars.githubusercontent.com/u/126733545?s=200" alt="LangChain" class="h-10 w-10 object-contain" />
+              </div>
+              <div>
+                <h3 class="text-lg font-semibold text-emerald-200">LangChain</h3>
+                <p class="text-sm text-zinc-400">Callback-based tracing</p>
+              </div>
+            </div>
+            <span class="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">Supported</span>
+          </div>
+
+          <div class="mt-5 space-y-2">
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              PyPDFLoader, DirectoryLoader, TextLoader
+            </div>
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              RecursiveCharacterTextSplitter
+            </div>
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              VectorStore retrievers
+            </div>
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              LLM & ChatModel callbacks
+            </div>
+            <div class="flex items-center gap-2 text-sm text-zinc-300">
+              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              Token usage tracking
+            </div>
+          </div>
         </div>
-        <div class="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
-          <div class="text-sm font-semibold">Compare experiments</div>
-          <p class="mt-2 text-sm text-zinc-300">A/B test chunking strategies, embedding models, and retrieval settings. See what actually changed.</p>
+      </div>
+
+      <!-- LLM Providers -->
+      <div class="mt-12">
+        <h3 class="text-center text-lg font-semibold text-zinc-200">LLM Providers</h3>
+        <p class="mt-2 text-center text-sm text-zinc-400">Track token usage, latency, and costs</p>
+
+        <div class="mt-6 flex flex-wrap justify-center gap-4">
+          <!-- OpenAI -->
+          <div class="flex items-center gap-3 rounded-xl bg-white/5 px-5 py-3 ring-1 ring-emerald-500/30 hover:ring-emerald-500/50 transition">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-800">
+              <svg class="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.4850 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+            </div>
+            <div>
+              <div class="font-medium text-white">OpenAI</div>
+              <span class="text-xs text-emerald-400">Supported</span>
+            </div>
+          </div>
+
+          <!-- Coming soon providers -->
+          <div class="flex items-center gap-3 rounded-xl bg-white/5 px-5 py-3 ring-1 ring-white/10 opacity-50">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-900/30">
+              <svg class="h-6 w-6 text-orange-300/50" viewBox="0 0 24 24" fill="currentColor"><path d="M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017L3.664 20H0l6.57-16.48zm3.753 10.066L7.907 7.278l-2.424 6.307h4.838z"/></svg>
+            </div>
+            <div>
+              <div class="font-medium text-zinc-400">Anthropic</div>
+              <span class="text-xs text-zinc-500">Coming soon</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 rounded-xl bg-white/5 px-5 py-3 ring-1 ring-white/10 opacity-50">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-900/30">
+              <svg class="h-6 w-6 text-blue-300/50" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            </div>
+            <div>
+              <div class="font-medium text-zinc-400">Google</div>
+              <span class="text-xs text-zinc-500">Coming soon</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coming soon -->
+      <div class="mt-10 text-center">
+        <p class="text-sm text-zinc-500">
+          More frameworks coming soon:
+          <span class="text-zinc-400">Haystack</span> ·
+          <span class="text-zinc-400">Semantic Kernel</span> ·
+          <span class="text-zinc-400">DSPy</span>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works / Pipeline -->
+  <section id="how-it-works" class="relative border-t border-white/10">
+    <div class="mx-auto max-w-6xl px-6 py-16">
+      <div class="text-center">
+        <h2 class="text-2xl font-semibold tracking-tight">How It Works</h2>
+        <p class="mt-3 text-zinc-400">SourceMapR traces every step of your RAG pipeline</p>
+      </div>
+
+      <!-- Pipeline visualization -->
+      <div class="mt-12 flex flex-wrap justify-center gap-4 md:gap-6">
+        <div class="pipeline-step flex flex-col items-center">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/10 ring-1 ring-indigo-500/30">
+            <svg class="h-8 w-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <span class="mt-3 text-sm font-medium text-indigo-300">Load</span>
+          <span class="text-xs text-zinc-500">Documents</span>
+        </div>
+
+        <div class="pipeline-step flex flex-col items-center">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-500/10 ring-1 ring-violet-500/30">
+            <svg class="h-8 w-8 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16m-7 6h7"/>
+            </svg>
+          </div>
+          <span class="mt-3 text-sm font-medium text-violet-300">Parse</span>
+          <span class="text-xs text-zinc-500">Extract text</span>
+        </div>
+
+        <div class="pipeline-step flex flex-col items-center">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-fuchsia-500/10 ring-1 ring-fuchsia-500/30">
+            <svg class="h-8 w-8 text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+            </svg>
+          </div>
+          <span class="mt-3 text-sm font-medium text-fuchsia-300">Chunk</span>
+          <span class="text-xs text-zinc-500">Split text</span>
+        </div>
+
+        <div class="pipeline-step flex flex-col items-center">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-pink-500/10 ring-1 ring-pink-500/30">
+            <svg class="h-8 w-8 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+            </svg>
+          </div>
+          <span class="mt-3 text-sm font-medium text-pink-300">Embed</span>
+          <span class="text-xs text-zinc-500">Vectorize</span>
+        </div>
+
+        <div class="pipeline-step flex flex-col items-center">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-500/10 ring-1 ring-rose-500/30">
+            <svg class="h-8 w-8 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </div>
+          <span class="mt-3 text-sm font-medium text-rose-300">Retrieve</span>
+          <span class="text-xs text-zinc-500">Find similar</span>
+        </div>
+
+        <div class="pipeline-step flex flex-col items-center">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-500/10 ring-1 ring-orange-500/30">
+            <svg class="h-8 w-8 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+          </div>
+          <span class="mt-3 text-sm font-medium text-orange-300">Generate</span>
+          <span class="text-xs text-zinc-500">LLM answer</span>
+        </div>
+      </div>
+
+      <!-- Trace explanation -->
+      <div class="mx-auto mt-12 max-w-3xl rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
+        <div class="flex items-start gap-4">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/30">
+            <svg class="h-5 w-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="font-semibold text-emerald-200">Full Evidence Lineage</h3>
+            <p class="mt-2 text-sm text-zinc-300">
+              For every answer, SourceMapR shows you: which chunks were retrieved, their similarity scores,
+              where they came from in the original document (with PDF highlighting), what prompt was sent to the LLM,
+              and how many tokens were used. Debug your RAG pipeline without guessing.
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -186,30 +459,58 @@
       <h2 class="text-2xl font-semibold tracking-tight">Features</h2>
 
       <div class="mt-10 grid gap-4 lg:grid-cols-2">
-        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
-          <h3 class="text-base font-semibold">Answer → Evidence mapping</h3>
-          <p class="mt-2 text-sm text-zinc-300">
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10 hover:ring-white/20 transition">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10">
+              <svg class="h-5 w-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+              </svg>
+            </div>
+            <h3 class="text-base font-semibold">Answer → Evidence mapping</h3>
+          </div>
+          <p class="mt-3 text-sm text-zinc-300">
             Trace every response to the exact chunks that were retrieved. See similarity scores and rankings.
           </p>
         </div>
 
-        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
-          <h3 class="text-base font-semibold">Document inspector with overlays</h3>
-          <p class="mt-2 text-sm text-zinc-300">
-            Click any chunk to see it highlighted in the original PDF. No more guessing where evidence came from.
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10 hover:ring-white/20 transition">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-fuchsia-500/10">
+              <svg class="h-5 w-5 text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+            </div>
+            <h3 class="text-base font-semibold">PDF viewer with highlights</h3>
+          </div>
+          <p class="mt-3 text-sm text-zinc-300">
+            Click any chunk to see it highlighted in the original PDF. Split view shows chunk and source side by side.
           </p>
         </div>
 
-        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
-          <h3 class="text-base font-semibold">Full LLM call capture</h3>
-          <p class="mt-2 text-sm text-zinc-300">
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10 hover:ring-white/20 transition">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+              <svg class="h-5 w-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+              </svg>
+            </div>
+            <h3 class="text-base font-semibold">Full LLM call capture</h3>
+          </div>
+          <p class="mt-3 text-sm text-zinc-300">
             See the exact prompt sent to the model, the response, token counts, and latency for every query.
           </p>
         </div>
 
-        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
-          <h3 class="text-base font-semibold">Experiment tracking</h3>
-          <p class="mt-2 text-sm text-zinc-300">
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10 hover:ring-white/20 transition">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
+              <svg class="h-5 w-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+              </svg>
+            </div>
+            <h3 class="text-base font-semibold">Experiment tracking</h3>
+          </div>
+          <p class="mt-3 text-sm text-zinc-300">
             Organize runs into experiments. Compare "chunk-size-256" vs "chunk-size-512" side by side.
           </p>
         </div>
@@ -217,16 +518,29 @@
     </div>
   </section>
 
-  <!-- Workflow -->
-  <section id="workflow" class="relative border-t border-white/10">
-    <div class="mx-auto max-w-6xl px-6 py-16" id="demo">
+  <!-- Code Examples -->
+  <section id="demo" class="relative border-t border-white/10">
+    <div class="mx-auto max-w-6xl px-6 py-16">
       <h2 class="text-2xl font-semibold tracking-tight">Two lines of code</h2>
       <p class="mt-3 max-w-3xl text-zinc-300">
-        Add SourceMapR to your existing LlamaIndex pipeline. Your code stays the same — we just watch.
+        Add SourceMapR to your existing pipeline. Your code stays the same — we just watch.
       </p>
 
-      <div class="mt-8 rounded-2xl bg-zinc-900/40 p-6 ring-1 ring-white/10">
-        <pre class="overflow-x-auto text-sm text-zinc-200"><code><span class="text-zinc-500"># pip install sourcemapr</span>
+      <!-- Tab buttons -->
+      <div class="mt-8 flex gap-2">
+        <button id="tab-llamaindex" onclick="showTab('llamaindex')" class="inline-flex items-center gap-2 rounded-lg bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-300 ring-1 ring-purple-500/30 transition hover:bg-purple-500/30">
+          <img src="https://avatars.githubusercontent.com/u/130722866?s=20" alt="LlamaIndex" class="h-4 w-4 rounded-sm" />
+          LlamaIndex
+        </button>
+        <button id="tab-langchain" onclick="showTab('langchain')" class="inline-flex items-center gap-2 rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-zinc-400 ring-1 ring-white/10 transition hover:bg-white/10">
+          <img src="https://avatars.githubusercontent.com/u/126733545?s=20" alt="LangChain" class="h-4 w-4 rounded-sm" />
+          LangChain
+        </button>
+      </div>
+
+      <!-- LlamaIndex code -->
+      <div id="code-llamaindex" class="mt-4 rounded-2xl bg-zinc-900/40 p-6 ring-1 ring-white/10">
+        <pre class="overflow-x-auto text-sm text-zinc-200"><code><span class="text-zinc-500"># pip install sourcemapr llama-index</span>
 
 <span class="text-indigo-300">from</span> sourcemapr <span class="text-indigo-300">import</span> init_tracing, stop_tracing
 init_tracing(endpoint=<span class="text-emerald-300">"http://localhost:5000"</span>)
@@ -243,13 +557,37 @@ print(response)
 stop_tracing()</code></pre>
       </div>
 
+      <!-- LangChain code -->
+      <div id="code-langchain" class="mt-4 hidden rounded-2xl bg-zinc-900/40 p-6 ring-1 ring-white/10">
+        <pre class="overflow-x-auto text-sm text-zinc-200"><code><span class="text-zinc-500"># pip install sourcemapr langchain langchain-community</span>
+
+<span class="text-indigo-300">from</span> sourcemapr <span class="text-indigo-300">import</span> init_tracing, stop_tracing
+init_tracing(endpoint=<span class="text-emerald-300">"http://localhost:5000"</span>)
+
+<span class="text-zinc-500"># Your existing LangChain code — unchanged</span>
+<span class="text-indigo-300">from</span> langchain_community.document_loaders <span class="text-indigo-300">import</span> PyPDFLoader
+<span class="text-indigo-300">from</span> langchain_text_splitters <span class="text-indigo-300">import</span> RecursiveCharacterTextSplitter
+<span class="text-indigo-300">from</span> langchain_community.vectorstores <span class="text-indigo-300">import</span> FAISS
+
+loader = PyPDFLoader(<span class="text-emerald-300">"./papers/attention.pdf"</span>)
+documents = loader.load()
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=<span class="text-orange-300">512</span>)
+chunks = splitter.split_documents(documents)
+
+vectorstore = FAISS.from_documents(chunks, embeddings)
+results = vectorstore.similarity_search(<span class="text-emerald-300">"What is attention?"</span>)
+
+stop_tracing()</code></pre>
+      </div>
+
       <div class="mt-6 text-sm text-zinc-400">
         Then open <code class="rounded bg-white/10 px-2 py-1">http://localhost:5000</code> to see the full evidence lineage.
       </div>
     </div>
   </section>
 
-  <!-- OSS -->
+  <!-- OSS / Get Started -->
   <section id="oss" class="relative border-t border-white/10">
     <div class="mx-auto max-w-6xl px-6 py-16" id="get-started">
       <div class="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
@@ -263,19 +601,25 @@ stop_tracing()</code></pre>
             <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">MIT License</span>
             <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Local-first</span>
             <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">SQLite storage</span>
+            <span class="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">Zero config</span>
           </div>
         </div>
 
         <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
           <div class="text-sm font-semibold">Get started in 60 seconds</div>
           <div class="mt-4 rounded-xl bg-zinc-900/60 p-4 font-mono text-sm text-zinc-200">
-            <div>git clone https://github.com/kamathhrishi/sourcemapr.git</div>
-            <div>cd sourcemapr && pip install -e .</div>
-            <div class="text-zinc-500">sourcemapr server</div>
+            <div><span class="text-zinc-500">$</span> git clone https://github.com/kamathhrishi/sourcemapr.git</div>
+            <div><span class="text-zinc-500">$</span> cd sourcemapr && pip install -e .</div>
+            <div><span class="text-zinc-500">$</span> sourcemapr server</div>
+            <div class="mt-2 text-emerald-400">Server running at http://localhost:5000</div>
           </div>
           <div class="mt-4 flex gap-3">
-            <a href="https://github.com/kamathhrishi/sourcemapr" class="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400">GitHub</a>
-            <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10">Read docs</a>
+            <a href="https://github.com/kamathhrishi/sourcemapr" class="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition">
+              View on GitHub
+            </a>
+            <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10 transition">
+              Read docs
+            </a>
           </div>
         </div>
       </div>
@@ -284,9 +628,9 @@ stop_tracing()</code></pre>
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>© <span id="y"></span> SourceMapR — Evidence observability for RAG.</div>
           <div class="flex gap-4">
-            <a href="https://github.com/kamathhrishi/sourcemapr" class="hover:text-white">GitHub</a>
-            <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="hover:text-white">Docs</a>
-            <a href="https://github.com/kamathhrishi/sourcemapr/issues" class="hover:text-white">Issues</a>
+            <a href="https://github.com/kamathhrishi/sourcemapr" class="hover:text-white transition">GitHub</a>
+            <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="hover:text-white transition">Docs</a>
+            <a href="https://github.com/kamathhrishi/sourcemapr/issues" class="hover:text-white transition">Issues</a>
           </div>
         </div>
       </footer>
@@ -295,6 +639,26 @@ stop_tracing()</code></pre>
 
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
+
+    function showTab(tab) {
+      // Hide all code blocks
+      document.getElementById('code-llamaindex').classList.add('hidden');
+      document.getElementById('code-langchain').classList.add('hidden');
+
+      // Reset all tab styles
+      document.getElementById('tab-llamaindex').className = 'inline-flex items-center gap-2 rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-zinc-400 ring-1 ring-white/10 transition hover:bg-white/10';
+      document.getElementById('tab-langchain').className = 'inline-flex items-center gap-2 rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-zinc-400 ring-1 ring-white/10 transition hover:bg-white/10';
+
+      // Show selected tab
+      document.getElementById('code-' + tab).classList.remove('hidden');
+
+      // Style active tab
+      if (tab === 'llamaindex') {
+        document.getElementById('tab-llamaindex').className = 'inline-flex items-center gap-2 rounded-lg bg-purple-500/20 px-4 py-2 text-sm font-medium text-purple-300 ring-1 ring-purple-500/30 transition hover:bg-purple-500/30';
+      } else {
+        document.getElementById('tab-langchain').className = 'inline-flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/30';
+      }
+    }
   </script>
 </body>
 </html>
