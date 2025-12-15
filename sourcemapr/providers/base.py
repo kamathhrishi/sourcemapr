@@ -18,6 +18,11 @@ class BaseProvider(ABC):
         self._instrumented = False
         self._original_handlers: Dict[str, Any] = {}
 
+    def _register_framework(self):
+        """Register this framework with the store."""
+        if self.name and self.name != "base":
+            self.store.frameworks.add(self.name)
+
     @abstractmethod
     def instrument(self) -> bool:
         """

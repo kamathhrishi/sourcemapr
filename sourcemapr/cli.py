@@ -93,6 +93,11 @@ def main():
         action='store_true',
         help='Skip confirmation prompt'
     )
+    clear_parser.add_argument(
+        '--reset',
+        action='store_true',
+        help='Full reset: also delete experiments and reset frameworks'
+    )
 
     # Init command
     init_parser = subparsers.add_parser('init', help='Initialize or reset the database')
@@ -116,7 +121,7 @@ def main():
     elif args.command == 'status':
         cmd_status()
     elif args.command == 'clear':
-        cmd_clear(args.yes)
+        cmd_clear(args.yes, args.reset)
     elif args.command == 'init':
         cmd_init(args.reset)
     elif args.command == 'version':
@@ -244,31 +249,32 @@ def cmd_status():
         print("Start with: sourcemapr server")
 
 
-def cmd_clear(skip_confirm: bool = False):
+def cmd_clear(skip_confirm: bool = False, full_reset: bool = False):
     """Clear all trace data."""
+    if full_reset:
+        msg = "This will DELETE ALL data including experiments and frameworks. Continue? [y/N] "
+    else:
+        msg = "This will delete all traces, documents, and data (keeps experiments). Continue? [y/N] "
+
     if not skip_confirm:
-        response = input("This will delete all traces, documents, and data. Continue? [y/N] ")
+        response = input(msg)
         if response.lower() not in ('y', 'yes'):
             print("Cancelled")
             return
 
+    # Clear database directly (more reliable than API)
+    print("Clearing database...")
     try:
-        import requests
-        response = requests.post('http://localhost:5000/api/clear', timeout=5)
-        if response.status_code == 200:
-            print("All data cleared")
+        from sourcemapr.server import database as db
+        if full_reset:
+            db.reset_all_data()
+            print("All data and experiments cleared (full reset)")
         else:
-            print(f"Error: {response.text}")
-    except requests.exceptions.ConnectionError:
-        # Server not running, clear database directly
-        print("Server not running. Clearing database directly...")
-        try:
-            from sourcemapr.server import database as db
             db.clear_all_data()
-            print("All data cleared")
-        except Exception as e:
-            print(f"Error clearing data: {e}")
-            sys.exit(1)
+            print("All data cleared (experiments preserved)")
+    except Exception as e:
+        print(f"Error clearing data: {e}")
+        sys.exit(1)
 
 
 def cmd_init(reset: bool = False):

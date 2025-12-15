@@ -47,6 +47,7 @@ class LlamaIndexProvider(BaseProvider):
             self._patch_vector_store_index()
             self._patch_embeddings()
             self._instrumented = True
+            # Don't register framework here - register when actually used
             print("[SourcemapR] LlamaIndex provider enabled")
             return True
         except Exception as e:
@@ -236,8 +237,10 @@ class LlamaIndexProvider(BaseProvider):
             from llama_index.core import SimpleDirectoryReader
             original_load = SimpleDirectoryReader.load_data
             store = self.store
+            register_framework = self._register_framework
 
             def patched_load(self_reader, *args, **kwargs):
+                register_framework()  # Register when actually used
                 span = store.start_span("load_documents", kind="document")
                 try:
                     result = original_load(self_reader, *args, **kwargs)
@@ -276,6 +279,8 @@ class LlamaIndexProvider(BaseProvider):
                             text=full_text
                         )
 
+                        print(f"[SourcemapR] Document loaded: {filename} ({len(file_data['pages'])} pages)")
+
                     return result
                 except Exception as e:
                     store.end_span(span, status="error")
@@ -287,18 +292,25 @@ class LlamaIndexProvider(BaseProvider):
             pass
 
     def _patch_sentence_splitter(self):
-        """Patch SentenceSplitter.get_nodes_from_documents."""
+        """Patch NodeParser base class to catch all node parsers."""
         try:
-            from llama_index.core.node_parser import SentenceSplitter
-            original_parse = SentenceSplitter.get_nodes_from_documents
+            from llama_index.core.node_parser.interface import NodeParser
             store = self.store
 
+            # Check if already patched
+            if hasattr(NodeParser.get_nodes_from_documents, '_sourcemapr_patched'):
+                return
+
+            original_parse = NodeParser.get_nodes_from_documents
+
             def patched_parse(self_parser, documents, *args, **kwargs):
+                parser_name = self_parser.__class__.__name__
                 span = store.start_span("chunk_documents", kind="chunking")
                 try:
                     result = original_parse(self_parser, documents, *args, **kwargs)
                     store.end_span(span, attributes={
                         "num_nodes": len(result),
+                        "parser": parser_name,
                         "chunk_size": getattr(self_parser, 'chunk_size', 0),
                     })
 
@@ -312,17 +324,21 @@ class LlamaIndexProvider(BaseProvider):
                             index=i,
                             text=node.text,
                             page_number=int(metadata.get('page_label')) if metadata.get('page_label') else None,
-                            start_char_idx=node.start_char_idx,
-                            end_char_idx=node.end_char_idx,
+                            start_char_idx=getattr(node, 'start_char_idx', None),
+                            end_char_idx=getattr(node, 'end_char_idx', None),
                             metadata=metadata
                         )
+
+                    print(f"[SourcemapR] {parser_name}: {len(result)} chunks created")
                     return result
                 except Exception as e:
                     store.end_span(span, status="error")
                     raise
 
-            SentenceSplitter.get_nodes_from_documents = patched_parse
-            self._original_handlers['SentenceSplitter.get_nodes_from_documents'] = original_parse
+            patched_parse._sourcemapr_patched = True
+            NodeParser.get_nodes_from_documents = patched_parse
+            self._original_handlers['NodeParser.get_nodes_from_documents'] = original_parse
+            print("[SourcemapR] Patched NodeParser base class (all splitters)")
         except ImportError:
             pass
 
@@ -387,6 +403,9 @@ class LlamaIndexProvider(BaseProvider):
                     elif cls_name == 'SentenceSplitter':
                         from llama_index.core.node_parser import SentenceSplitter
                         setattr(SentenceSplitter, method_name, original)
+                    elif cls_name == 'NodeParser':
+                        from llama_index.core.node_parser.interface import NodeParser
+                        setattr(NodeParser, method_name, original)
                     elif cls_name == 'VectorStoreIndex':
                         from llama_index.core import VectorStoreIndex
                         setattr(VectorStoreIndex, method_name, original)

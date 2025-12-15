@@ -78,6 +78,7 @@ class TraceStore:
         self.local_path = Path(local_path)
         self.local_path.mkdir(exist_ok=True)
         self.experiment = experiment  # Experiment name for auto-assignment
+        self.frameworks: set = set()  # Track which frameworks are being used
 
         # Storage
         self.traces: Dict[str, Trace] = {}
@@ -99,36 +100,95 @@ class TraceStore:
         self._sender_thread.start()
 
     def _sender_loop(self):
-        """Background loop to send traces to endpoint."""
-        while True:  # Keep running until we get None
+        """Background loop to send traces to endpoint with batching."""
+        BATCH_SIZE = 200  # Batch up to 200 items at a time for efficiency
+        BATCH_TYPES = {'chunk', 'embedding', 'document', 'parsed'}  # Types that can be batched
+
+        batch = []
+
+        def flush_batch():
+            nonlocal batch
+            if not batch:
+                return
+            if len(batch) == 1:
+                self._send_to_endpoint(batch[0])
+            else:
+                self._send_batch(batch)
+            batch = []
+
+        while True:
             try:
-                item = self._send_queue.get(timeout=1.0)
+                item = self._send_queue.get(timeout=0.1)  # Shorter timeout for batching
                 if item is None:
-                    # Drain any remaining items before exiting
+                    # Flush any remaining batch
+                    flush_batch()
+                    # Drain remaining items
+                    remaining_items = []
                     while not self._send_queue.empty():
                         remaining = self._send_queue.get_nowait()
                         if remaining:
-                            self._send_to_endpoint(remaining)
+                            remaining_items.append(remaining)
+                    if remaining_items:
+                        self._send_batch(remaining_items)
                     break
+
                 event_type = item.get('type', 'unknown')
-                if event_type == 'retrieval':
-                    print(f"[SourcemapR] Sender: sending retrieval...")
-                self._send_to_endpoint(item)
-                if event_type == 'retrieval':
-                    print(f"[SourcemapR] Sender: retrieval sent!")
+
+                # Batch certain types together
+                if event_type in BATCH_TYPES:
+                    batch.append(item)
+                    if len(batch) >= BATCH_SIZE:
+                        flush_batch()
+                else:
+                    # Flush batch before sending non-batchable item
+                    flush_batch()
+                    if event_type == 'retrieval':
+                        print(f"[SourcemapR] Sender: sending retrieval...")
+                    self._send_to_endpoint(item)
+                    if event_type == 'retrieval':
+                        print(f"[SourcemapR] Sender: retrieval sent!")
+
             except queue.Empty:
+                # Flush batch on timeout
+                flush_batch()
                 if not self._running:
                     break
                 continue
+
+    def _send_batch(self, items: List[Dict]):
+        """Send a batch of items to the endpoint."""
+        if not self.endpoint or not items:
+            return
+        try:
+            # Add experiment name and frameworks to all items
+            for item in items:
+                if 'data' in item:
+                    if self.experiment:
+                        item['data']['experiment_name'] = self.experiment
+                    if self.frameworks:
+                        item['data']['frameworks'] = list(self.frameworks)
+
+            response = requests.post(
+                f"{self.endpoint}/api/traces",
+                json={"type": "batch", "items": items},
+                timeout=30.0  # Longer timeout for batches
+            )
+            if response.status_code != 200:
+                print(f"[SourcemapR] Error sending batch of {len(items)}: HTTP {response.status_code}")
+        except Exception as e:
+            print(f"[SourcemapR] Error sending batch: {e}")
 
     def _send_to_endpoint(self, data: Dict):
         """Send data to the SourcemapR platform."""
         if not self.endpoint:
             return
         try:
-            # Add experiment name if set
-            if self.experiment and 'data' in data:
-                data['data']['experiment_name'] = self.experiment
+            # Add experiment name and frameworks if set
+            if 'data' in data:
+                if self.experiment:
+                    data['data']['experiment_name'] = self.experiment
+                if self.frameworks:
+                    data['data']['frameworks'] = list(self.frameworks)
             response = requests.post(
                 f"{self.endpoint}/api/traces",
                 json=data,
@@ -378,8 +438,21 @@ class TraceStore:
         return [t.to_dict() for t in self.traces.values()]
 
     def stop(self):
-        """Stop the background sender."""
+        """Stop the background sender and flush remaining items."""
         self._running = False
+
+        # Check queue size before stopping
+        queue_size = self._send_queue.qsize()
+        if queue_size > 0:
+            print(f"[SourcemapR] Flushing {queue_size} remaining events...")
+
         self._send_queue.put(None)
         if self._sender_thread:
-            self._sender_thread.join(timeout=2.0)
+            # Wait longer for large queues (60 seconds max)
+            timeout = min(60.0, max(10.0, queue_size * 0.05))
+            self._sender_thread.join(timeout=timeout)
+
+            # Check if there are still items left
+            remaining = self._send_queue.qsize()
+            if remaining > 0:
+                print(f"[SourcemapR] Warning: {remaining} events may not have been sent (timeout)")

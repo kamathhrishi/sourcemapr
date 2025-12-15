@@ -45,6 +45,7 @@ class LangChainProvider(BaseProvider):
             self._patch_text_splitters()
             self._patch_retrievers()
             self._instrumented = True
+            # Don't register framework here - register when actually used
             print("[SourcemapR] LangChain provider enabled")
             return True
         except Exception as e:
@@ -261,12 +262,14 @@ class LangChainProvider(BaseProvider):
         """Patch common document loaders."""
         import os
         store = self.store
+        register_framework = self._register_framework
         logged_sources = set()  # Track what we've already logged to avoid duplicates
 
         def log_documents_from_result(result, loader_instance=None, loader_name="unknown"):
             """Helper to log documents from loader results."""
             if not result:
                 return
+            register_framework()  # Register when actually used
 
             docs_by_source = {}
             for doc in result:
@@ -380,15 +383,44 @@ class LangChainProvider(BaseProvider):
         except ImportError:
             pass
 
+        # Patch base BaseLoader class to catch all loaders
+        try:
+            from langchain_core.document_loaders import BaseLoader
+
+            # Only patch if not already patched
+            if not hasattr(BaseLoader.load, '_sourcemapr_patched'):
+                original_base_load = BaseLoader.load
+
+                def patched_base_load(self_loader, *args, **kwargs):
+                    result = original_base_load(self_loader, *args, **kwargs)
+                    loader_name = self_loader.__class__.__name__
+                    log_documents_from_result(result, self_loader, loader_name)
+                    return result
+
+                patched_base_load._sourcemapr_patched = True
+                BaseLoader.load = patched_base_load
+                self._original_handlers['BaseLoader.load'] = original_base_load
+                print("[SourcemapR] Patched BaseLoader (all document loaders)")
+        except ImportError:
+            pass
+
     def _patch_text_splitters(self):
-        """Patch text splitters."""
+        """Patch text splitters - only patch base class to avoid double logging."""
         import os
         store = self.store
 
-        def create_patched_split(original_split, splitter_name):
-            """Create a patched split_documents method."""
+        # Only patch the base TextSplitter class to catch all splitters
+        try:
+            from langchain_text_splitters.base import TextSplitter
+
+            if hasattr(TextSplitter.split_documents, '_sourcemapr_patched'):
+                return  # Already patched
+
+            original = TextSplitter.split_documents
+
             def patched_split(self_splitter, documents, *args, **kwargs):
-                result = original_split(self_splitter, documents, *args, **kwargs)
+                result = original(self_splitter, documents, *args, **kwargs)
+                splitter_name = self_splitter.__class__.__name__
 
                 for i, doc in enumerate(result):
                     metadata = doc.metadata or {}
@@ -411,59 +443,11 @@ class LangChainProvider(BaseProvider):
 
                 print(f"[SourcemapR] {splitter_name}: {len(result)} chunks created")
                 return result
-            return patched_split
 
-        # Patch RecursiveCharacterTextSplitter from langchain_text_splitters
-        try:
-            from langchain_text_splitters import RecursiveCharacterTextSplitter
-            original = RecursiveCharacterTextSplitter.split_documents
-            RecursiveCharacterTextSplitter.split_documents = create_patched_split(original, "RecursiveCharacterTextSplitter")
-            self._original_handlers['langchain_text_splitters.RecursiveCharacterTextSplitter.split_documents'] = original
-            print("[SourcemapR] Patched RecursiveCharacterTextSplitter (langchain_text_splitters)")
-        except ImportError:
-            pass
-
-        # Also patch from langchain.text_splitter (legacy import path)
-        try:
-            from langchain.text_splitter import RecursiveCharacterTextSplitter as LegacyRecursive
-            # Only patch if it's a different class
-            if not hasattr(LegacyRecursive.split_documents, '_sourcemapr_patched'):
-                original = LegacyRecursive.split_documents
-                patched = create_patched_split(original, "RecursiveCharacterTextSplitter")
-                patched._sourcemapr_patched = True
-                LegacyRecursive.split_documents = patched
-                self._original_handlers['langchain.text_splitter.RecursiveCharacterTextSplitter.split_documents'] = original
-        except ImportError:
-            pass
-
-        # Patch CharacterTextSplitter
-        try:
-            from langchain_text_splitters import CharacterTextSplitter
-            original = CharacterTextSplitter.split_documents
-            CharacterTextSplitter.split_documents = create_patched_split(original, "CharacterTextSplitter")
-            self._original_handlers['langchain_text_splitters.CharacterTextSplitter.split_documents'] = original
-        except ImportError:
-            pass
-
-        # Patch TokenTextSplitter
-        try:
-            from langchain_text_splitters import TokenTextSplitter
-            original = TokenTextSplitter.split_documents
-            TokenTextSplitter.split_documents = create_patched_split(original, "TokenTextSplitter")
-            self._original_handlers['langchain_text_splitters.TokenTextSplitter.split_documents'] = original
-        except ImportError:
-            pass
-
-        # Patch base TextSplitter class (split_documents is often inherited)
-        try:
-            from langchain_text_splitters.base import TextSplitter
-            if not hasattr(TextSplitter.split_documents, '_sourcemapr_patched'):
-                original = TextSplitter.split_documents
-                patched = create_patched_split(original, "TextSplitter")
-                patched._sourcemapr_patched = True
-                TextSplitter.split_documents = patched
-                self._original_handlers['langchain_text_splitters.base.TextSplitter.split_documents'] = original
-                print("[SourcemapR] Patched TextSplitter base class")
+            patched_split._sourcemapr_patched = True
+            TextSplitter.split_documents = patched_split
+            self._original_handlers['langchain_text_splitters.base.TextSplitter.split_documents'] = original
+            print("[SourcemapR] Patched TextSplitter base class (all splitters)")
         except ImportError:
             pass
 

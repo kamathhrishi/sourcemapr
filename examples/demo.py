@@ -35,14 +35,23 @@ def main():
 
     print("\nConfiguring LlamaIndex...")
     Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-    Settings.node_parser = SentenceSplitter(chunk_size=512, chunk_overlap=50)
 
     print("Loading documents from ./data ...")
     documents = SimpleDirectoryReader("./data").load_data()
-    print(f"Loaded {len(documents)} documents")
+    print(f"Loaded {len(documents)} document pages")
+
+    # Chunk documents - NOTE: LlamaIndex chunk_size is in TOKENS, not characters!
+    # To match LangChain's 512 chars, use ~128 tokens (512 ÷ 4 chars/token)
+    print("Chunking documents...")
+    splitter = SentenceSplitter(
+        chunk_size=128,      # 128 tokens ≈ 512 characters
+        chunk_overlap=20,    # 20 tokens ≈ 50 characters
+    )
+    nodes = splitter.get_nodes_from_documents(documents, show_progress=True)
+    print(f"Created {len(nodes)} chunks")
 
     print("Creating index...")
-    index = VectorStoreIndex.from_documents(documents, show_progress=True)
+    index = VectorStoreIndex(nodes, show_progress=True)
     print("Index created!")
 
     print("\n" + "-" * 50)

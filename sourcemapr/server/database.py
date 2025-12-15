@@ -24,10 +24,17 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 description TEXT,
+                framework TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Add framework column if it doesn't exist (migration for existing databases)
+        try:
+            cursor.execute("ALTER TABLE experiments ADD COLUMN framework TEXT")
+        except:
+            pass  # Column already exists
 
         # Traces table
         cursor.execute("""
@@ -218,18 +225,29 @@ def create_experiment(name: str, description: str = None) -> Dict:
         return get_experiment(exp_id)
 
 
-def get_or_create_experiment_by_name(name: str) -> int:
+def get_or_create_experiment_by_name(name: str, frameworks: List[str] = None) -> int:
     """Get experiment ID by name, creating it if it doesn't exist."""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM experiments WHERE name = ?", (name,))
+        cursor.execute("SELECT id, framework FROM experiments WHERE name = ?", (name,))
         row = cursor.fetchone()
         if row:
+            # Update framework if provided - REPLACE don't combine
+            if frameworks:
+                new_framework = ','.join(sorted(set(frameworks)))
+                existing = row['framework'] or ''
+                if new_framework != existing:
+                    cursor.execute(
+                        "UPDATE experiments SET framework = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (new_framework, row['id'])
+                    )
+                    conn.commit()
             return row['id']
-        # Create new experiment
+        # Create new experiment with framework
+        framework_str = ','.join(sorted(set(frameworks))) if frameworks else None
         cursor.execute(
-            "INSERT INTO experiments (name) VALUES (?)",
-            (name,)
+            "INSERT INTO experiments (name, framework) VALUES (?, ?)",
+            (name, framework_str)
         )
         conn.commit()
         return cursor.lastrowid
@@ -420,10 +438,11 @@ def unassign_from_experiment(trace_ids: List[str] = None, doc_ids: List[str] = N
 def store_trace(data: Dict) -> None:
     """Store a trace."""
     trace_data = data.get('data', {})
+    frameworks = trace_data.get('frameworks')
 
     # Get experiment_id BEFORE opening connection to avoid nested connections
     if trace_data.get('experiment_name'):
-        experiment_id = get_or_create_experiment_by_name(trace_data['experiment_name'])
+        experiment_id = get_or_create_experiment_by_name(trace_data['experiment_name'], frameworks)
     else:
         experiment_id = get_default_experiment_id()
 
@@ -471,10 +490,11 @@ def store_span(data: Dict) -> None:
 def store_document(data: Dict) -> None:
     """Store a document."""
     doc_data = data.get('data', {})
+    frameworks = doc_data.get('frameworks')
 
     # Get experiment_id BEFORE opening connection to avoid nested connections
     if doc_data.get('experiment_name'):
-        experiment_id = get_or_create_experiment_by_name(doc_data['experiment_name'])
+        experiment_id = get_or_create_experiment_by_name(doc_data['experiment_name'], frameworks)
     else:
         experiment_id = get_default_experiment_id()
 
@@ -520,10 +540,11 @@ def store_parsed(data: Dict) -> None:
 def store_chunk(data: Dict) -> None:
     """Store a chunk."""
     chunk_data = data.get('data', {})
+    frameworks = chunk_data.get('frameworks')
 
     # Get experiment_id BEFORE opening connection to avoid nested connections
     if chunk_data.get('experiment_name'):
-        experiment_id = get_or_create_experiment_by_name(chunk_data['experiment_name'])
+        experiment_id = get_or_create_experiment_by_name(chunk_data['experiment_name'], frameworks)
     else:
         experiment_id = get_default_experiment_id()
 
@@ -571,10 +592,11 @@ def store_embedding(data: Dict) -> None:
 def store_retrieval(data: Dict) -> None:
     """Store a retrieval record."""
     ret_data = data.get('data', {})
+    frameworks = ret_data.get('frameworks')
 
     # Get experiment_id BEFORE opening connection to avoid nested connections
     if ret_data.get('experiment_name'):
-        experiment_id = get_or_create_experiment_by_name(ret_data['experiment_name'])
+        experiment_id = get_or_create_experiment_by_name(ret_data['experiment_name'], frameworks)
     else:
         experiment_id = get_default_experiment_id()
 
@@ -599,10 +621,11 @@ def store_retrieval(data: Dict) -> None:
 def store_llm_call(data: Dict) -> None:
     """Store an LLM call record."""
     llm_data = data.get('data', {})
+    frameworks = llm_data.get('frameworks')
 
     # Get experiment_id BEFORE opening connection to avoid nested connections
     if llm_data.get('experiment_name'):
-        experiment_id = get_or_create_experiment_by_name(llm_data['experiment_name'])
+        experiment_id = get_or_create_experiment_by_name(llm_data['experiment_name'], frameworks)
     else:
         experiment_id = get_default_experiment_id()
 
@@ -895,6 +918,184 @@ def clear_experiment_data(experiment_id: int) -> None:
         cursor.execute("UPDATE chunks SET experiment_id = NULL WHERE experiment_id = ?", (experiment_id,))
         cursor.execute("UPDATE retrievals SET experiment_id = NULL WHERE experiment_id = ?", (experiment_id,))
         cursor.execute("UPDATE llm_calls SET experiment_id = NULL WHERE experiment_id = ?", (experiment_id,))
+        conn.commit()
+
+
+def reset_all_data() -> None:
+    """Reset ALL data including experiments. Complete database wipe."""
+    global _default_experiment_id_cache
+    _default_experiment_id_cache = None  # Reset cache
+
+    # Ensure tables exist first
+    ensure_tables_exist()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        # Clear all data tables
+        cursor.execute("DELETE FROM traces")
+        cursor.execute("DELETE FROM spans")
+        cursor.execute("DELETE FROM documents")
+        cursor.execute("DELETE FROM parsed_docs")
+        cursor.execute("DELETE FROM chunks")
+        cursor.execute("DELETE FROM embeddings")
+        cursor.execute("DELETE FROM retrievals")
+        cursor.execute("DELETE FROM llm_calls")
+        # Also clear experiments (except Default)
+        cursor.execute("DELETE FROM experiments WHERE name != 'Default'")
+        # Reset Default experiment's framework
+        cursor.execute("UPDATE experiments SET framework = NULL WHERE name = 'Default'")
+        conn.commit()
+
+
+# ========== Batch Operations ==========
+
+def store_chunks_batch(chunks: list) -> None:
+    """Store multiple chunks in a single transaction."""
+    if not chunks:
+        return
+
+    # Group by experiment to minimize experiment lookups
+    by_experiment = {}
+    frameworks_by_experiment = {}
+    for chunk in chunks:
+        chunk_data = chunk.get('data', {})
+        exp_name = chunk_data.get('experiment_name', 'Default')
+        if exp_name not in by_experiment:
+            by_experiment[exp_name] = []
+            frameworks_by_experiment[exp_name] = set()
+        by_experiment[exp_name].append(chunk_data)
+        # Collect frameworks for this experiment
+        if chunk_data.get('frameworks'):
+            for fw in chunk_data['frameworks']:
+                frameworks_by_experiment[exp_name].add(fw)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        for exp_name, chunk_list in by_experiment.items():
+            frameworks = list(frameworks_by_experiment.get(exp_name, set()))
+            framework_str = ','.join(sorted(frameworks)) if frameworks else None
+
+            # Get experiment_id once per group
+            cursor.execute("SELECT id, framework FROM experiments WHERE name = ?", (exp_name,))
+            row = cursor.fetchone()
+            if row:
+                experiment_id = row['id']
+                # Update framework if needed - REPLACE don't combine
+                if frameworks and framework_str != (row['framework'] or ''):
+                    cursor.execute(
+                        "UPDATE experiments SET framework = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (framework_str, experiment_id)
+                    )
+            else:
+                cursor.execute(
+                    "INSERT INTO experiments (name, framework) VALUES (?, ?)",
+                    (exp_name, framework_str)
+                )
+                experiment_id = cursor.lastrowid
+
+            # Bulk insert all chunks for this experiment
+            cursor.executemany("""
+                INSERT OR REPLACE INTO chunks
+                (chunk_id, doc_id, experiment_id, index_num, text, text_length, page_number, metadata, trace_id, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                (
+                    c.get('chunk_id'),
+                    c.get('doc_id'),
+                    experiment_id,
+                    c.get('index'),
+                    c.get('text'),
+                    c.get('text_length'),
+                    c.get('page_number'),
+                    json.dumps(c.get('metadata', {})),
+                    c.get('trace_id'),
+                    json.dumps(c)
+                ) for c in chunk_list
+            ])
+        conn.commit()
+
+
+def store_documents_batch(documents: list) -> None:
+    """Store multiple documents in a single transaction."""
+    if not documents:
+        return
+
+    by_experiment = {}
+    frameworks_by_experiment = {}
+    for doc in documents:
+        doc_data = doc.get('data', {})
+        exp_name = doc_data.get('experiment_name', 'Default')
+        if exp_name not in by_experiment:
+            by_experiment[exp_name] = []
+            frameworks_by_experiment[exp_name] = set()
+        by_experiment[exp_name].append(doc_data)
+        # Collect frameworks for this experiment
+        if doc_data.get('frameworks'):
+            for fw in doc_data['frameworks']:
+                frameworks_by_experiment[exp_name].add(fw)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        for exp_name, doc_list in by_experiment.items():
+            frameworks = list(frameworks_by_experiment.get(exp_name, set()))
+            framework_str = ','.join(sorted(frameworks)) if frameworks else None
+
+            cursor.execute("SELECT id, framework FROM experiments WHERE name = ?", (exp_name,))
+            row = cursor.fetchone()
+            if row:
+                experiment_id = row['id']
+                # Update framework if needed - REPLACE don't combine
+                if frameworks and framework_str != (row['framework'] or ''):
+                    cursor.execute(
+                        "UPDATE experiments SET framework = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (framework_str, experiment_id)
+                    )
+            else:
+                cursor.execute("INSERT INTO experiments (name, framework) VALUES (?, ?)", (exp_name, framework_str))
+                experiment_id = cursor.lastrowid
+
+            cursor.executemany("""
+                INSERT OR REPLACE INTO documents
+                (doc_id, experiment_id, filename, file_path, num_pages, text_length, trace_id, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                (
+                    d.get('doc_id'),
+                    experiment_id,
+                    d.get('filename'),
+                    d.get('file_path'),
+                    d.get('num_pages'),
+                    d.get('text_length'),
+                    d.get('trace_id'),
+                    json.dumps(d)
+                ) for d in doc_list
+            ])
+        conn.commit()
+
+
+def store_parsed_batch(parsed_docs: list) -> None:
+    """Store multiple parsed documents in a single transaction."""
+    if not parsed_docs:
+        return
+
+    # Extract data from each item
+    doc_list = [doc.get('data', {}) for doc in parsed_docs]
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.executemany("""
+            INSERT OR REPLACE INTO parsed_docs
+            (doc_id, filename, text, text_length, trace_id)
+            VALUES (?, ?, ?, ?, ?)
+        """, [
+            (
+                d.get('doc_id'),
+                d.get('filename'),
+                d.get('text'),
+                len(d.get('text', '')) if d.get('text') else 0,
+                d.get('trace_id')
+            ) for d in doc_list
+        ])
         conn.commit()
 
 

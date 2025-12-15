@@ -1,99 +1,217 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Observability</title>
+    <title>SourceMapR - RAG Observability</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- PDF.js for rendering PDFs with text selection and highlighting -->
+    <!-- PDF.js for rendering PDFs -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Google Fonts - JetBrains Mono for code -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
                         apple: {
-                            bg: '#f5f5f7',
-                            card: '#ffffff',
-                            border: '#d2d2d7',
-                            text: '#1d1d1f',
-                            secondary: '#86868b',
-                            tertiary: '#a1a1a6',
+                            bg: 'var(--bg)',
+                            card: 'var(--card)',
+                            border: 'var(--border)',
+                            text: 'var(--text)',
+                            secondary: 'var(--secondary)',
+                            tertiary: 'var(--tertiary)',
                             blue: '#0071e3',
                             green: '#34c759',
                             orange: '#ff9500',
                             purple: '#af52de',
                             pink: '#ff2d55',
-                        }
+                            red: '#ff3b30',
+                        },
+                        // Framework colors
+                        langchain: '#1C3C3C',
+                        llamaindex: '#6366f1',
+                        openai: '#10a37f',
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'monospace'],
                     }
                 }
             }
         }
     </script>
     <style>
+        /* CSS Variables for theming */
+        :root {
+            --bg: #f5f5f7;
+            --card: #ffffff;
+            --border: #d2d2d7;
+            --text: #1d1d1f;
+            --secondary: #86868b;
+            --tertiary: #a1a1a6;
+            --code-bg: #f6f8fa;
+        }
+        .dark {
+            --bg: #1c1c1e;
+            --card: #2c2c2e;
+            --border: #3a3a3c;
+            --text: #f5f5f7;
+            --secondary: #98989d;
+            --tertiary: #636366;
+            --code-bg: #161618;
+        }
+
         body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif; }
-        .card { transition: all 0.2s ease; }
-        .card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+
+        /* Card styles with better shadows */
+        .card {
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .card:hover {
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            transform: translateY(-1px);
+        }
+        .dark .card { box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+        .dark .card:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.4); }
+
+        /* Code blocks */
+        pre, code { font-family: 'JetBrains Mono', monospace; }
         pre { white-space: pre-wrap; word-wrap: break-word; }
+        .code-block {
+            background: var(--code-bg);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 12px;
+            line-height: 1.5;
+            overflow-x: auto;
+        }
+
+        /* Animations */
         .live-dot { animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .fade-in { animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Skeleton loader */
+        .skeleton {
+            background: linear-gradient(90deg, var(--border) 25%, var(--bg) 50%, var(--border) 75%);
+            background-size: 200% 100%;
+            animation: skeleton 1.5s infinite;
+        }
+        @keyframes skeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+        /* Chunk highlight */
         .chunk-highlight { background: #fde68a; color: #78350f; padding: 2px 4px; border-radius: 3px; }
+        .dark .chunk-highlight { background: #854d0e; color: #fef3c7; }
+
+        /* Status badges */
+        .badge { padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+        .badge-success { background: #dcfce7; color: #166534; }
+        .badge-error { background: #fee2e2; color: #991b1b; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .dark .badge-success { background: #166534; color: #dcfce7; }
+        .dark .badge-error { background: #991b1b; color: #fee2e2; }
+        .dark .badge-warning { background: #92400e; color: #fef3c7; }
+
+        /* Sparkline container */
+        .sparkline { height: 24px; width: 60px; }
+
+        /* Copy button */
+        .copy-btn {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .copy-parent:hover .copy-btn { opacity: 1; }
+
+        /* Provider logos */
+        .provider-logo { width: 20px; height: 20px; }
 
         /* PDF.js viewer styles */
         .pdf-container { position: relative; overflow: auto; background: #525659; }
         .pdf-page-wrapper { position: relative; margin: 0 auto 16px auto; box-shadow: 0 2px 8px rgba(0,0,0,0.3); background: white; }
         .pdf-page-wrapper canvas { display: block; }
 
-        /* Text layer for selection and highlighting */
+        /* Text layer for selection */
         .textLayer {
-            position: absolute;
-            left: 0;
-            top: 0;
-            right: 0;
-            bottom: 0;
-            overflow: hidden;
-            opacity: 0.2;
-            line-height: 1.0;
-            -webkit-text-size-adjust: none;
-            -moz-text-size-adjust: none;
-            text-size-adjust: none;
+            position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+            overflow: hidden; opacity: 0.2; line-height: 1.0;
         }
-        .textLayer > span {
-            color: transparent;
-            position: absolute;
-            white-space: pre;
-            cursor: text;
-            transform-origin: 0% 0%;
-        }
+        .textLayer > span { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
         .textLayer ::selection { background: rgba(0, 0, 255, 0.3); }
-        .textLayer .highlight {
-            margin: -1px;
-            padding: 1px;
-            background-color: rgba(251, 191, 36, 0.6);
-            border-radius: 2px;
-        }
-        .textLayer .highlight.selected { background-color: rgba(251, 146, 60, 0.8); }
+        .textLayer .highlight { margin: -1px; padding: 1px; background-color: rgba(251, 191, 36, 0.6); border-radius: 2px; }
 
+        /* Scrollbar */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #d2d2d7; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #a1a1a6; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--secondary); }
+
+        /* Latency bar */
+        .latency-bar { height: 4px; border-radius: 2px; background: linear-gradient(90deg, #34c759, #ff9500, #ff3b30); }
     </style>
 </head>
 <body class="bg-apple-bg text-apple-text h-screen flex flex-col overflow-hidden">
+    <!-- SVG Definitions for Framework Logos -->
+    <svg style="display: none;">
+        <defs>
+            <!-- LangChain Logo -->
+            <symbol id="logo-langchain" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </symbol>
+            <!-- LlamaIndex Logo -->
+            <symbol id="logo-llamaindex" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+            </symbol>
+            <!-- OpenAI Logo -->
+            <symbol id="logo-openai" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364l2.0201-1.1638a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/>
+            </symbol>
+            <!-- SourceMapR Logo -->
+            <symbol id="logo-sourcemapr" viewBox="0 0 32 32">
+                <defs>
+                    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#0071e3"/>
+                        <stop offset="100%" style="stop-color:#af52de"/>
+                    </linearGradient>
+                </defs>
+                <rect x="2" y="2" width="28" height="28" rx="6" fill="url(#grad1)"/>
+                <path d="M8 11h16M8 16h12M8 21h8" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="22" cy="21" r="3" fill="white"/>
+            </symbol>
+        </defs>
+    </svg>
+
     <!-- Header -->
-    <header class="bg-white border-b border-apple-border px-6 py-3 flex-shrink-0">
+    <header class="bg-apple-card border-b border-apple-border px-6 py-3 flex-shrink-0">
         <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="activity" class="w-5 h-5 text-apple-blue"></i>
-                    <span class="text-base font-semibold text-apple-text tracking-tight">RAG Observe</span>
-                    <span class="live-dot w-1.5 h-1.5 bg-apple-green rounded-full"></span>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center gap-2.5">
+                    <svg class="w-7 h-7"><use href="#logo-sourcemapr"/></svg>
+                    <span class="text-base font-semibold text-apple-text tracking-tight">SourceMapR</span>
+                    <span class="live-dot w-1.5 h-1.5 bg-apple-green rounded-full" title="Auto-refreshing"></span>
+                </div>
+                <!-- Dynamic framework badges - shown based on experiment data -->
+                <div id="framework-badges" class="hidden md:flex items-center gap-2 ml-4 pl-4 border-l border-apple-border">
+                    <!-- Framework badges will be dynamically inserted here -->
                 </div>
             </div>
             <div class="flex items-center space-x-3 text-xs">
+                <!-- Dark mode toggle -->
+                <button onclick="toggleDarkMode()" class="flex items-center gap-1.5 text-apple-secondary hover:text-apple-text px-2 py-1.5 rounded hover:bg-apple-bg transition-colors" title="Toggle dark mode">
+                    <i data-lucide="sun" class="w-4 h-4 dark:hidden"></i>
+                    <i data-lucide="moon" class="w-4 h-4 hidden dark:block"></i>
+                </button>
                 <!-- Back to Experiments button -->
                 <button onclick="exitToExperimentSelect()" class="flex items-center gap-1.5 text-apple-secondary hover:text-apple-text px-2 py-1.5 rounded hover:bg-apple-bg transition-colors">
                     <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
@@ -567,6 +685,7 @@
         let selectedDoc = null;
         let selectedTrace = null;
         let currentExperimentId = null; // null = all data
+        let isDarkMode = false;
 
         // PDF.js configuration
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -576,12 +695,149 @@
         let currentPdfDoc = null;
         let pdfScale = 1.2;
 
+        // ========== Dark Mode ==========
+        function toggleDarkMode() {
+            isDarkMode = !isDarkMode;
+            document.documentElement.classList.toggle('dark', isDarkMode);
+            localStorage.setItem('darkMode', isDarkMode);
+
+            // Toggle highlight.js theme
+            document.getElementById('hljs-light').disabled = isDarkMode;
+            document.getElementById('hljs-dark').disabled = !isDarkMode;
+
+            lucide.createIcons();
+        }
+
+        function initDarkMode() {
+            isDarkMode = localStorage.getItem('darkMode') === 'true' ||
+                         window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.classList.toggle('dark', isDarkMode);
+            document.getElementById('hljs-light').disabled = isDarkMode;
+            document.getElementById('hljs-dark').disabled = !isDarkMode;
+        }
+
+        // ========== Utility Functions ==========
+        function copyToClipboard(text, btn) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalIcon = btn.innerHTML;
+                btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5 text-apple-green"></i>';
+                lucide.createIcons();
+                setTimeout(() => {
+                    btn.innerHTML = originalIcon;
+                    lucide.createIcons();
+                }, 1500);
+            });
+        }
+
+        function formatLatency(ms) {
+            if (!ms && ms !== 0) return '-';
+            if (ms < 1000) return `${Math.round(ms)}ms`;
+            return `${(ms / 1000).toFixed(1)}s`;
+        }
+
+        function getLatencyColor(ms) {
+            if (ms < 500) return 'text-apple-green';
+            if (ms < 2000) return 'text-apple-orange';
+            return 'text-apple-red';
+        }
+
+        function getLatencyBarWidth(ms, maxMs = 5000) {
+            return Math.min((ms / maxMs) * 100, 100);
+        }
+
+        function getProviderLogo(model) {
+            if (!model) return '';
+            const m = model.toLowerCase();
+            if (m.includes('gpt') || m.includes('openai') || m.includes('text-embedding')) {
+                return '<svg class="w-4 h-4 text-openai"><use href="#logo-openai"/></svg>';
+            }
+            if (m.includes('claude') || m.includes('anthropic')) {
+                return '<svg class="w-4 h-4 text-purple-600"><use href="#logo-llamaindex"/></svg>';
+            }
+            return '<i data-lucide="cpu" class="w-4 h-4 text-apple-secondary"></i>';
+        }
+
+        function getStatusBadge(status) {
+            if (!status) return '';
+            const s = status.toLowerCase();
+            if (s === 'success' || s === 'ok' || s === 'completed') {
+                return '<span class="badge badge-success">Success</span>';
+            }
+            if (s === 'error' || s === 'failed') {
+                return '<span class="badge badge-error">Error</span>';
+            }
+            return `<span class="badge badge-warning">${status}</span>`;
+        }
+
+        // ========== Charts ==========
+        let latencyChart = null;
+        let tokenChart = null;
+
+        function createLatencyChart(containerId, data) {
+            const ctx = document.getElementById(containerId);
+            if (!ctx) return;
+
+            if (latencyChart) latencyChart.destroy();
+
+            latencyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map((_, i) => i + 1),
+                    datasets: [{
+                        data: data,
+                        borderColor: '#0071e3',
+                        backgroundColor: 'rgba(0, 113, 227, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false }
+                    }
+                }
+            });
+        }
+
+        function createTokenChart(containerId, promptTokens, completionTokens) {
+            const ctx = document.getElementById(containerId);
+            if (!ctx) return;
+
+            if (tokenChart) tokenChart.destroy();
+
+            tokenChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Prompt', 'Completion'],
+                    datasets: [{
+                        data: [promptTokens, completionTokens],
+                        backgroundColor: ['#0071e3', '#af52de'],
+                        borderWidth: 0,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
+            initDarkMode();
             lucide.createIcons();
             await initializeExperiments();
         });
 
-        async function initializeExperiments() {
+        async function initializeExperiments(autoSelect = false) {
             // Load experiments list
             const res = await fetch('/api/experiments');
             const experiments = await res.json();
@@ -603,17 +859,8 @@
             // Render experiment selection list
             updateExperimentSelectList();
 
-            // Auto-select "All Experiments" if there's any data, otherwise first experiment
-            if (allData.experiments.length > 0) {
-                const hasAnyData = allData.experiments.some(e =>
-                    (e.doc_count > 0 || e.retrieval_count > 0 || e.llm_count > 0)
-                );
-                if (hasAnyData) {
-                    enterExperiment(null); // "All Experiments"
-                } else {
-                    enterExperiment(allData.experiments[0].id);
-                }
-            }
+            // Always show experiment selection screen on load - user must choose
+            // Don't auto-select anymore
         }
 
         function updateExperimentSelectList() {
@@ -657,7 +904,10 @@
                             <i data-lucide="${exp.name === 'Default' ? 'inbox' : 'flask-conical'}" class="w-5 h-5 ${exp.name === 'Default' ? 'text-gray-600' : 'text-violet-600'}"></i>
                         </div>
                         <div class="flex-1 min-w-0">
-                            <h3 class="font-medium text-apple-text">${escapeHtml(exp.name)}</h3>
+                            <div class="flex items-center gap-2">
+                                <h3 class="font-medium text-apple-text">${escapeHtml(exp.name)}</h3>
+                                ${getFrameworkBadgesHTML(exp.framework)}
+                            </div>
                             ${exp.description ? `<p class="text-sm text-apple-secondary truncate">${escapeHtml(exp.description)}</p>` : ''}
                             <div class="flex items-center gap-3 mt-1 text-xs text-apple-tertiary">
                                 <span>${exp.doc_count || 0} docs</span>
@@ -677,6 +927,9 @@
             const exp = expId ? (allData.experiments || []).find(e => e.id === expId) : null;
             document.getElementById('current-experiment-name').textContent = exp?.name || 'All Experiments';
 
+            // Update framework badges
+            updateFrameworkBadges(exp?.framework);
+
             // Hide experiment selection, show dashboard
             document.getElementById('experiment-select-screen').classList.add('hidden');
             document.getElementById('main-dashboard').classList.remove('hidden');
@@ -684,6 +937,41 @@
             // Start data refresh
             refreshData();
             autoRefresh = setInterval(refreshData, 3000);
+        }
+
+        function getFrameworkBadgesHTML(frameworkStr, small = false) {
+            if (!frameworkStr) return '';
+
+            const frameworks = frameworkStr.split(',').filter(f => f.trim());
+            const sizeClass = small ? 'w-3 h-3' : 'w-3.5 h-3.5';
+            const textClass = small ? 'text-[9px]' : 'text-[10px]';
+            const paddingClass = small ? 'px-1.5 py-0.5' : 'px-2 py-1';
+
+            return frameworks.map(fw => {
+                const fwLower = fw.toLowerCase().trim();
+                if (fwLower === 'langchain') {
+                    return `<div class="flex items-center gap-1 ${paddingClass} rounded-full bg-langchain/10 text-langchain" title="LangChain">
+                        <svg class="${sizeClass}"><use href="#logo-langchain"/></svg>
+                        <span class="${textClass} font-medium">LangChain</span>
+                    </div>`;
+                } else if (fwLower === 'llamaindex') {
+                    return `<div class="flex items-center gap-1 ${paddingClass} rounded-full bg-llamaindex/10 text-llamaindex" title="LlamaIndex">
+                        <svg class="${sizeClass}"><use href="#logo-llamaindex"/></svg>
+                        <span class="${textClass} font-medium">LlamaIndex</span>
+                    </div>`;
+                } else if (fwLower === 'openai') {
+                    return `<div class="flex items-center gap-1 ${paddingClass} rounded-full bg-openai/10 text-openai" title="OpenAI">
+                        <svg class="${sizeClass}"><use href="#logo-openai"/></svg>
+                        <span class="${textClass} font-medium">OpenAI</span>
+                    </div>`;
+                }
+                return '';
+            }).filter(b => b).join('');
+        }
+
+        function updateFrameworkBadges(frameworkStr) {
+            const container = document.getElementById('framework-badges');
+            container.innerHTML = getFrameworkBadgesHTML(frameworkStr);
         }
 
         function exitToExperimentSelect() {
@@ -695,12 +983,15 @@
 
             currentExperimentId = null;
 
+            // Clear framework badges
+            updateFrameworkBadges(null);
+
             // Show experiment selection, hide dashboard
             document.getElementById('experiment-select-screen').classList.remove('hidden');
             document.getElementById('main-dashboard').classList.add('hidden');
 
-            // Refresh experiment list
-            initializeExperiments();
+            // Refresh experiment list (don't auto-select)
+            initializeExperiments(false);
         }
 
         // ========== PDF.js Viewer ==========
@@ -851,13 +1142,16 @@
                 await renderPdfPage(pdfDoc, pageNum, scrollContainer, highlightText);
             }
 
-            // Scroll to first highlight if present
-            setTimeout(() => {
+            // Scroll to first highlight if present (with retry for slow renders)
+            const scrollToHighlight = (retries = 3) => {
                 const firstHighlight = scrollContainer.querySelector('.textLayer .highlight');
                 if (firstHighlight) {
                     firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else if (retries > 0) {
+                    setTimeout(() => scrollToHighlight(retries - 1), 200);
                 }
-            }, 100);
+            };
+            setTimeout(scrollToHighlight, 150);
         }
 
         function adjustPdfZoom(containerId, pdfUrl, pageNum, highlightText, showAllPages, delta) {
@@ -913,13 +1207,30 @@
                     : '/api/data';
                 const res = await fetch(url);
                 const newData = await res.json();
-                // Preserve experiments list when refreshing
-                const experiments = allData.experiments;
+
+                // Refresh experiments list
+                const expRes = await fetch('/api/experiments');
+                const experiments = await expRes.json();
                 allData = newData;
                 allData.experiments = experiments;
+
+                // Check if current experiment still exists
+                if (currentExperimentId) {
+                    const exp = experiments.find(e => e.id === currentExperimentId);
+                    if (!exp) {
+                        console.log('Current experiment not found, returning to selection');
+                        exitToExperimentSelect();
+                        return;
+                    }
+                    // Update framework badges in case they changed
+                    updateFrameworkBadges(exp.framework);
+                }
+
                 updateUI();
             } catch (e) {
-                console.error('Error:', e);
+                console.error('Error refreshing data:', e);
+                // On error, go back to experiment selection
+                exitToExperimentSelect();
             }
         }
 
@@ -1700,9 +2011,28 @@
                     pageIndicator.textContent = `Page ${chunk.page_number}`;
                 }
                 currentPage = chunk.page_number;
-                }
+            }
 
             renderDocSourceView();
+
+            // Scroll to highlighted chunk text in both parsed view and PDF after render
+            setTimeout(() => {
+                // Scroll parsed text
+                const highlighted = document.querySelector('.chunk-highlight');
+                if (highlighted) {
+                    highlighted.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                // Scroll PDF to highlight (with retry for slow renders)
+                const scrollPdfToHighlight = (retries = 3) => {
+                    const pdfHighlight = document.querySelector('#doc-pdf-viewer .textLayer .highlight, #doc-pdf-viewer-full .textLayer .highlight');
+                    if (pdfHighlight) {
+                        pdfHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    } else if (retries > 0) {
+                        setTimeout(() => scrollPdfToHighlight(retries - 1), 200);
+                    }
+                };
+                scrollPdfToHighlight();
+            }, 200);
         }
 
         function setDocViewMode(mode) {
@@ -1806,20 +2136,80 @@
                     content.innerHTML = `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No PDF available</p></div>`;
                 }
             } else if (docViewMode === 'parsed') {
-                // Parsed only view - show all text with scrolling
-                const allParsedText = pages.join('\n\n━━━━━━━━━━ PAGE BREAK ━━━━━━━━━━\n\n');
+                // Parsed only view - show all text with scrolling and page markers
+                const pagesWithMarkers = pages.map((pageText, i) => {
+                    const pageNum = i + 1;
+                    return `<div class="parsed-page-marker" data-page="${pageNum}">
+<div class="sticky top-0 bg-apple-bg/90 backdrop-blur-sm px-2 py-1 mb-2 rounded text-xs font-medium text-apple-secondary border-b border-apple-border">Page ${pageNum}</div>
+${highlightTextInContent(pageText, chunkHighlightText)}
+</div>`;
+                }).join('\n\n');
+
                 content.innerHTML = `
-                    <div class="flex-1 flex flex-col overflow-hidden">
+                    <div class="flex-1 flex flex-col overflow-hidden relative">
                         <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-2">
                             <i data-lucide="file-text" class="w-3 h-3"></i>
                             <span>Parsed Text (${totalPages} pages) - Scroll to navigate</span>
                             ${chunkHighlightText ? '<span class="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">Chunk Highlighted</span>' : ''}
+                            <span id="floating-page-indicator" class="ml-auto bg-apple-text text-white px-2 py-0.5 rounded text-xs font-medium">Page 1 / ${totalPages}</span>
                         </div>
-                        <pre class="flex-1 p-4 text-sm overflow-y-auto bg-apple-bg/30 text-apple-text">${highlightTextInContent(allParsedText, chunkHighlightText)}</pre>
+                        <pre id="parsed-text-container" class="flex-1 p-4 text-sm overflow-y-auto bg-apple-bg/30 text-apple-text">${pagesWithMarkers}</pre>
                     </div>
                 `;
                 lucide.createIcons();
+                // Set up scroll tracking for page indicator
+                setupParsedTextScrollTracking(totalPages);
             }
+        }
+
+        function setupParsedTextScrollTracking(totalPages) {
+            const container = document.getElementById('parsed-text-container');
+            const indicator = document.getElementById('floating-page-indicator');
+            if (!container || !indicator) return;
+
+            const pageMarkers = container.querySelectorAll('.parsed-page-marker');
+            if (!pageMarkers.length) return;
+
+            // Use Intersection Observer to track visible pages
+            const observer = new IntersectionObserver((entries) => {
+                let visiblePage = 1;
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        visiblePage = parseInt(entry.target.dataset.page) || 1;
+                    }
+                });
+                // Find the topmost visible page
+                for (const marker of pageMarkers) {
+                    const rect = marker.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    if (rect.top <= containerRect.top + 100 && rect.bottom > containerRect.top) {
+                        visiblePage = parseInt(marker.dataset.page) || 1;
+                        break;
+                    }
+                }
+                indicator.textContent = `Page ${visiblePage} / ${totalPages}`;
+                currentPage = visiblePage;
+            }, {
+                root: container,
+                threshold: 0.1,
+                rootMargin: '-10% 0px -80% 0px'
+            });
+
+            pageMarkers.forEach(marker => observer.observe(marker));
+
+            // Also use scroll event for more responsive updates
+            container.addEventListener('scroll', () => {
+                const containerRect = container.getBoundingClientRect();
+                let visiblePage = 1;
+                for (const marker of pageMarkers) {
+                    const rect = marker.getBoundingClientRect();
+                    if (rect.top <= containerRect.top + 50) {
+                        visiblePage = parseInt(marker.dataset.page) || 1;
+                    }
+                }
+                indicator.textContent = `Page ${visiblePage} / ${totalPages}`;
+                currentPage = visiblePage;
+            });
         }
 
         function closeDocumentViewer() {
@@ -2175,16 +2565,34 @@
                                 onclick="selectTrace('${item.id}')">
                                 <td class="py-2.5 px-4">
                                     <div class="flex items-center gap-2">
-                                        <i data-lucide="message-square" class="w-4 h-4 text-apple-secondary flex-shrink-0"></i>
+                                        <i data-lucide="message-square" class="w-4 h-4 text-apple-blue flex-shrink-0"></i>
                                         <span class="text-sm text-apple-text truncate">${escapeHtml(queryPreview)}</span>
                                     </div>
                                 </td>
                                 <td class="py-2.5 px-3 text-xs text-apple-secondary">${formatTime(item.time)}</td>
-                                <td class="py-2.5 px-3 text-sm text-apple-secondary">${chunkCount || '-'}</td>
-                                <td class="py-2.5 px-3 text-xs text-apple-secondary font-mono">${hasLLM ? llmModel : '-'}</td>
-                                <td class="py-2.5 px-3 text-sm text-apple-secondary">${latency ? latency.toFixed(0) + 'ms' : '-'}</td>
                                 <td class="py-2.5 px-3">
-                                    ${expName ? `<span class="inline-flex items-center gap-1 text-xs text-blue-600"><i data-lucide="folder" class="w-3 h-3"></i>${escapeHtml(expName)}</span>` : '<span class="text-apple-tertiary text-xs">-</span>'}
+                                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-apple-blue/10 text-apple-blue text-xs font-medium">${chunkCount || 0}</span>
+                                </td>
+                                <td class="py-2.5 px-3">
+                                    ${hasLLM ? `
+                                        <div class="flex items-center gap-1.5">
+                                            ${getProviderLogo(llmModel)}
+                                            <span class="text-xs text-apple-secondary font-mono">${llmModel.split('/').pop()}</span>
+                                        </div>
+                                    ` : '<span class="text-apple-tertiary text-xs">-</span>'}
+                                </td>
+                                <td class="py-2.5 px-3">
+                                    ${latency ? `
+                                        <div class="flex flex-col gap-1">
+                                            <span class="text-xs font-medium ${getLatencyColor(latency)}">${formatLatency(latency)}</span>
+                                            <div class="w-16 h-1 bg-apple-border/50 rounded-full overflow-hidden">
+                                                <div class="h-full bg-gradient-to-r from-apple-green via-apple-orange to-apple-red rounded-full" style="width: ${getLatencyBarWidth(latency)}%"></div>
+                                            </div>
+                                        </div>
+                                    ` : '<span class="text-apple-tertiary text-xs">-</span>'}
+                                </td>
+                                <td class="py-2.5 px-3">
+                                    ${expName ? `<span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"><i data-lucide="flask-conical" class="w-3 h-3"></i>${escapeHtml(expName)}</span>` : '<span class="text-apple-tertiary text-xs">-</span>'}
                                 </td>
                                 <td class="py-2.5 px-3 text-right">
                                     <div class="flex items-center justify-end gap-1">
@@ -2270,17 +2678,24 @@
             document.getElementById('request-detail-content').innerHTML = `
                 <div class="p-6 space-y-6">
                     <!-- Query -->
-                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm">
-                        <div class="flex items-center gap-2 mb-3">
-                            <i data-lucide="search" class="w-4 h-4 text-violet-600"></i>
-                            <p class="text-xs text-apple-secondary font-medium uppercase tracking-wide">Query</p>
+                    <div class="bg-apple-card rounded-xl p-4 border border-apple-border shadow-sm card copy-parent">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="search" class="w-4 h-4 text-violet-600"></i>
+                                <p class="text-xs text-apple-secondary font-medium uppercase tracking-wide">Query</p>
+                            </div>
+                            <button onclick="copyToClipboard(decodeURIComponent('${encodeURIComponent(query || '')}'), this)"
+                                    class="copy-btn flex items-center gap-1 text-xs text-apple-secondary hover:text-apple-text px-2 py-1 rounded hover:bg-apple-bg transition-colors">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                Copy
+                            </button>
                         </div>
-                        <p class="text-apple-text">"${escapeHtml(query || '')}"</p>
+                        <p class="text-apple-text font-medium">"${escapeHtml(query || '')}"</p>
                     </div>
 
                     <!-- Retrieved Chunks (with pagination) -->
                     ${results.length ? `
-                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm">
+                    <div class="bg-apple-card rounded-xl p-4 border border-apple-border shadow-sm card">
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-2">
                                 <i data-lucide="layers" class="w-4 h-4 text-amber-600"></i>
@@ -2325,55 +2740,66 @@
 
                     <!-- Response (from retrieval if no LLM call) -->
                     ${!llmCall && retrieval?.response ? `
-                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm">
-                        <div class="flex items-center gap-2 mb-3">
-                            <i data-lucide="message-square" class="w-4 h-4 text-emerald-600"></i>
-                            <p class="text-xs text-apple-secondary font-medium uppercase tracking-wide">Response</p>
+                    <div class="bg-apple-card rounded-xl p-4 border border-apple-border shadow-sm card copy-parent">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="message-square" class="w-4 h-4 text-emerald-600"></i>
+                                <p class="text-xs text-apple-secondary font-medium uppercase tracking-wide">Response</p>
+                            </div>
+                            <button onclick="copyToClipboard(decodeURIComponent('${encodeURIComponent(retrieval.response)}'), this)"
+                                    class="copy-btn flex items-center gap-1 text-xs text-apple-secondary hover:text-apple-text px-2 py-1 rounded hover:bg-apple-bg transition-colors">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                Copy
+                            </button>
                         </div>
-                        <div class="bg-apple-bg/50 rounded-lg p-4 border border-apple-border/50">
-                            <pre class="text-sm text-apple-text whitespace-pre-wrap">${escapeHtml(retrieval.response)}</pre>
+                        <div class="bg-apple-bg rounded-lg p-4 border border-apple-border/50 code-block">
+                            <pre class="text-sm text-apple-text whitespace-pre-wrap font-mono">${escapeHtml(retrieval.response)}</pre>
                         </div>
                     </div>
                     ` : ''}
 
                     <!-- LLM Call Details -->
                     ${llmCall ? `
-                    <div class="bg-white rounded-xl p-4 border border-apple-border shadow-sm">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center gap-2">
-                                <i data-lucide="sparkles" class="w-4 h-4 text-rose-600"></i>
-                                <p class="text-xs text-apple-secondary font-medium uppercase tracking-wide">LLM Call</p>
+                    <div class="bg-apple-card rounded-xl p-4 border border-apple-border shadow-sm card">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                ${getProviderLogo(llmCall.model)}
+                                <div>
+                                    <p class="text-sm font-medium text-apple-text">${llmCall.model || 'Unknown Model'}</p>
+                                    <p class="text-xs text-apple-secondary">LLM Call</p>
+                                </div>
                             </div>
-                            <span class="flex items-center gap-1 text-xs ${llmCall.status === 'error' ? 'text-red-500' : 'text-emerald-600'}">
-                                <i data-lucide="${llmCall.status === 'error' ? 'x-circle' : 'check-circle'}" class="w-3 h-3"></i>
-                                ${llmCall.status || 'success'}
-                            </span>
+                            ${getStatusBadge(llmCall.status || 'success')}
+                        </div>
+
+                        <!-- LLM Stats Cards -->
+                        <div class="grid grid-cols-4 gap-3 mb-4">
+                            <div class="bg-apple-bg rounded-lg p-3 text-center">
+                                <p class="text-lg font-semibold text-apple-text">${formatLatency(llmCall.duration_ms)}</p>
+                                <p class="text-xs text-apple-secondary">Latency</p>
+                            </div>
+                            <div class="bg-apple-bg rounded-lg p-3 text-center">
+                                <p class="text-lg font-semibold text-apple-blue">${llmCall.prompt_tokens || '-'}</p>
+                                <p class="text-xs text-apple-secondary">Prompt</p>
+                            </div>
+                            <div class="bg-apple-bg rounded-lg p-3 text-center">
+                                <p class="text-lg font-semibold text-apple-purple">${llmCall.completion_tokens || '-'}</p>
+                                <p class="text-xs text-apple-secondary">Completion</p>
+                            </div>
+                            <div class="bg-apple-bg rounded-lg p-3 text-center">
+                                <p class="text-lg font-semibold text-apple-text">${llmCall.total_tokens || '-'}</p>
+                                <p class="text-xs text-apple-secondary">Total</p>
+                            </div>
                         </div>
 
                         <!-- LLM Metadata Table -->
-                        <div class="bg-apple-bg/50 rounded-lg border border-apple-border/50 mb-4 overflow-hidden">
+                        <div class="bg-apple-bg rounded-lg border border-apple-border/50 mb-4 overflow-hidden">
                             <table class="w-full text-xs">
                                 <tbody class="divide-y divide-apple-border/50">
                                     <tr>
                                         <td class="px-3 py-2 text-apple-secondary w-32">Model</td>
                                         <td class="px-3 py-2 text-apple-text font-mono">${llmCall.model || 'unknown'}</td>
                                     </tr>
-                                    ${llmCall.duration_ms ? `
-                                    <tr>
-                                        <td class="px-3 py-2 text-apple-secondary">Latency</td>
-                                        <td class="px-3 py-2 text-apple-text font-mono">${llmCall.duration_ms.toFixed(0)}ms</td>
-                                    </tr>
-                                    ` : ''}
-                                    ${llmCall.prompt_tokens || llmCall.completion_tokens || llmCall.total_tokens ? `
-                                    <tr>
-                                        <td class="px-3 py-2 text-apple-secondary">Tokens</td>
-                                        <td class="px-3 py-2 text-apple-text font-mono">
-                                            ${llmCall.prompt_tokens ? `prompt: ${llmCall.prompt_tokens}` : ''}
-                                            ${llmCall.completion_tokens ? ` · completion: ${llmCall.completion_tokens}` : ''}
-                                            ${llmCall.total_tokens ? ` · total: ${llmCall.total_tokens}` : ''}
-                                        </td>
-                                    </tr>
-                                    ` : ''}
                                     ${llmCall.temperature !== undefined ? `
                                     <tr>
                                         <td class="px-3 py-2 text-apple-secondary">Temperature</td>
@@ -2434,10 +2860,17 @@
 
                         <!-- Response -->
                         ${llmCall.response ? `
-                        <div class="mb-4">
-                            <p class="text-xs text-apple-tertiary uppercase tracking-wide mb-2">Response</p>
-                            <div class="bg-white rounded-lg p-4 border border-apple-border/50">
-                                <pre class="text-sm text-apple-text whitespace-pre-wrap">${escapeHtml(llmCall.response)}</pre>
+                        <div class="mb-4 copy-parent">
+                            <div class="flex items-center justify-between mb-2">
+                                <p class="text-xs text-apple-tertiary uppercase tracking-wide">Response</p>
+                                <button onclick="copyToClipboard(decodeURIComponent('${encodeURIComponent(llmCall.response)}'), this)"
+                                        class="copy-btn flex items-center gap-1 text-xs text-apple-secondary hover:text-apple-text px-2 py-1 rounded hover:bg-apple-bg transition-colors">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                    Copy
+                                </button>
+                            </div>
+                            <div class="bg-apple-card rounded-lg p-4 border border-apple-border/50 code-block">
+                                <pre class="text-sm text-apple-text whitespace-pre-wrap font-mono">${escapeHtml(llmCall.response)}</pre>
                             </div>
                         </div>
                         ` : ''}

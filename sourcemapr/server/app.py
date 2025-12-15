@@ -151,8 +151,58 @@ async def receive_trace(request: Request):
     data = await request.json()
     event_type = data.get('type')
 
-    # Debug logging
+    # Handle batch events (multiple items in one request)
+    if event_type == 'batch':
+        items = data.get('items', [])
+        print(f"[SourcemapR] Received batch: {len(items)} items")
+        _process_batch(items)
+        return {"status": "ok", "processed": len(items)}
+
+    # Debug logging for non-batch
     print(f"[SourcemapR] Received event: {event_type}")
+    _process_event(data)
+    return {"status": "ok"}
+
+
+def _process_batch(items: list):
+    """Process a batch of events efficiently."""
+    # Group items by type for bulk processing
+    chunks = []
+    documents = []
+    parsed = []
+    other = []
+
+    for item in items:
+        event_type = item.get('type')
+        if event_type == 'chunk':
+            chunks.append(item)
+        elif event_type == 'document':
+            documents.append(item)
+        elif event_type == 'parsed':
+            parsed.append(item)
+        else:
+            other.append(item)
+
+    # Bulk insert chunks (most common)
+    if chunks:
+        db.store_chunks_batch(chunks)
+
+    # Bulk insert documents
+    if documents:
+        db.store_documents_batch(documents)
+
+    # Bulk insert parsed docs
+    if parsed:
+        db.store_parsed_batch(parsed)
+
+    # Process other items individually
+    for item in other:
+        _process_event(item)
+
+
+def _process_event(data: dict):
+    """Process a single event."""
+    event_type = data.get('type')
 
     if event_type == 'trace':
         db.store_trace(data)
@@ -173,8 +223,6 @@ async def receive_trace(request: Request):
         print(f"[SourcemapR] LLM call: {data.get('data', {}).get('model', 'N/A')}")
         db.store_llm_call(data)
 
-    return {"status": "ok"}
-
 
 # ========== Data Retrieval Endpoints ==========
 
@@ -189,9 +237,18 @@ async def get_all_data(experiment_id: Optional[int] = Query(None)):
     """Get all data for the dashboard."""
     traces = db.get_traces(experiment_id)
     spans = db.get_spans()
-    documents = db.get_documents(experiment_id)
-    parsed = db.get_parsed_docs()
     chunks = db.get_chunks(experiment_id=experiment_id)
+
+    # Get documents that have chunks in this experiment (not filtered by experiment_id)
+    # This handles the case where documents were logged in one experiment but chunks in another
+    if experiment_id and chunks:
+        doc_ids_with_chunks = set(c.get('doc_id') for c in chunks.values() if c.get('doc_id'))
+        all_documents = db.get_documents()  # Get all documents
+        documents = {k: v for k, v in all_documents.items() if v.get('doc_id') in doc_ids_with_chunks}
+    else:
+        documents = db.get_documents(experiment_id)
+
+    parsed = db.get_parsed_docs()
     embeddings = db.get_embeddings(limit=100)
     retrievals = db.get_retrievals(experiment_id, limit=50)
     llm_calls = db.get_llm_calls(experiment_id, limit=50)
@@ -287,11 +344,14 @@ async def get_llm_calls_list(experiment_id: Optional[int] = Query(None)):
 
 
 @app.post("/api/clear")
-async def clear_data(experiment_id: Optional[int] = Query(None)):
+async def clear_data(experiment_id: Optional[int] = Query(None), reset: bool = Query(False)):
     """Clear all data or data for a specific experiment."""
     if experiment_id:
         db.clear_experiment_data(experiment_id)
         return {"status": "cleared", "experiment_id": experiment_id}
+    elif reset:
+        db.reset_all_data()
+        return {"status": "reset", "message": "All data and experiments cleared"}
     else:
         db.clear_all_data()
         return {"status": "cleared"}
