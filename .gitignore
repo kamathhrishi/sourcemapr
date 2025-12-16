@@ -53,3 +53,5 @@ htmlcov/
 # Local data
 data/
 *.pdf
+sec_cache/
+sec_data/

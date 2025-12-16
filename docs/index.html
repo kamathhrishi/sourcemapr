@@ -1,6 +1,15 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-VY7SRYYRCL"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-VY7SRYYRCL');
+  </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SourceMapR — Evidence observability for RAG</title>
@@ -77,10 +86,11 @@
         <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="hidden rounded-xl bg-white/5 px-4 py-2 text-sm text-zinc-200 ring-1 ring-white/10 hover:bg-white/10 sm:inline">
           Docs
         </a>
-        <a href="https://github.com/kamathhrishi/sourcemapr" class="inline-flex items-center gap-2 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/10 hover:bg-zinc-700 transition">
-          <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-          <span>Star</span>
-          <img src="https://img.shields.io/github/stars/kamathhrishi/sourcemapr?style=social&label=" alt="GitHub stars" class="h-4" />
+        <a id="github-star-btn" href="https://github.com/kamathhrishi/sourcemapr" class="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-zinc-800 to-zinc-900 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/10 hover:ring-white/25 hover:shadow-lg hover:shadow-indigo-500/10 transition-all duration-200">
+          <svg class="h-5 w-5 text-zinc-300 group-hover:text-white transition-colors" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          <svg class="h-4 w-4 text-yellow-400 group-hover:scale-110 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span id="star-text">Star</span>
+          <span id="star-count" class="hidden rounded-md bg-white/10 px-1.5 py-0.5 text-xs font-semibold"></span>
         </a>
       </div>
     </nav>
@@ -245,26 +255,48 @@
             <span class="rounded-full bg-purple-500/20 px-2 py-0.5 text-xs font-medium text-purple-300">Supported</span>
           </div>
 
-          <div class="mt-5 space-y-2">
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              SimpleDirectoryReader (document loading)
+          <div class="mt-5 space-y-3">
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-purple-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">SimpleDirectoryReader</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">File paths, page counts, text length</p>
             </div>
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              SentenceSplitter & NodeParser (chunking)
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-purple-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">SentenceSplitter</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Chunk text, indices, page numbers, char positions</p>
             </div>
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              VectorStoreIndex (indexing)
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-purple-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">VectorStoreIndex</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Index creation, document count</p>
             </div>
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              Query callbacks (retrieval + LLM)
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-purple-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">QueryEngine</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Queries, retrieved chunks, similarity scores</p>
             </div>
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              HuggingFace embeddings
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-purple-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">HuggingFaceEmbedding</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Model name, dimensions, duration</p>
+            </div>
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-purple-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">LLM Callbacks</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Prompts, responses, token counts, latency</p>
             </div>
           </div>
         </div>
@@ -284,26 +316,41 @@
             <span class="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">Supported</span>
           </div>
 
-          <div class="mt-5 space-y-2">
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              PyPDFLoader, DirectoryLoader, TextLoader
+          <div class="mt-5 space-y-3">
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-emerald-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">PyPDFLoader</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">File paths, page counts, text extraction</p>
             </div>
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              RecursiveCharacterTextSplitter
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-emerald-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">DirectoryLoader</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Batch document loading, file counts</p>
             </div>
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              VectorStore retrievers
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-emerald-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">RecursiveCharacterTextSplitter</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Chunk text, indices, metadata</p>
             </div>
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              LLM & ChatModel callbacks
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-emerald-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">VectorStore Retrievers</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Queries, retrieved docs, similarity scores</p>
             </div>
-            <div class="flex items-center gap-2 text-sm text-zinc-300">
-              <svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              Token usage tracking
+            <div class="rounded-lg bg-white/5 p-3 ring-1 ring-white/5">
+              <div class="flex items-center gap-2 text-sm font-medium text-emerald-300">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <code class="text-xs">LLM & ChatModel</code>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Messages, responses, token counts, latency</p>
             </div>
           </div>
         </div>
@@ -312,38 +359,66 @@
       <!-- LLM Providers -->
       <div class="mt-12">
         <h3 class="text-center text-lg font-semibold text-zinc-200">LLM Providers</h3>
-        <p class="mt-2 text-center text-sm text-zinc-400">Track token usage, latency, and costs</p>
+        <p class="mt-2 text-center text-sm text-zinc-400">Direct client instrumentation for token usage, latency, and tool calls</p>
 
-        <div class="mt-6 flex flex-wrap justify-center gap-4">
+        <div class="mt-6 grid gap-4 md:grid-cols-3">
           <!-- OpenAI -->
-          <div class="flex items-center gap-3 rounded-xl bg-white/5 px-5 py-3 ring-1 ring-emerald-500/30 hover:ring-emerald-500/50 transition">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-800">
-              <svg class="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.4850 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+          <div class="rounded-xl bg-gradient-to-br from-zinc-800/50 to-zinc-900/50 p-5 ring-1 ring-emerald-500/30 hover:ring-emerald-500/50 transition">
+            <div class="flex items-center gap-3">
+              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-800">
+                <svg class="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.4850 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+              </div>
+              <div>
+                <div class="font-medium text-white">OpenAI</div>
+                <span class="text-xs text-emerald-400">Supported</span>
+              </div>
             </div>
-            <div>
-              <div class="font-medium text-white">OpenAI</div>
-              <span class="text-xs text-emerald-400">Supported</span>
+            <div class="mt-4 space-y-2">
+              <div class="rounded-md bg-white/5 p-2">
+                <code class="text-xs text-zinc-300">chat.completions.create</code>
+                <p class="mt-1 text-xs text-zinc-500">Messages, response, tokens, latency, tool calls</p>
+              </div>
+              <div class="rounded-md bg-white/5 p-2">
+                <code class="text-xs text-zinc-300">completions.create</code>
+                <p class="mt-1 text-xs text-zinc-500">Prompt, response, tokens, latency</p>
+              </div>
             </div>
           </div>
 
           <!-- Coming soon providers -->
-          <div class="flex items-center gap-3 rounded-xl bg-white/5 px-5 py-3 ring-1 ring-white/10 opacity-50">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-900/30">
-              <svg class="h-6 w-6 text-orange-300/50" viewBox="0 0 24 24" fill="currentColor"><path d="M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017L3.664 20H0l6.57-16.48zm3.753 10.066L7.907 7.278l-2.424 6.307h4.838z"/></svg>
+          <div class="rounded-xl bg-white/5 p-5 ring-1 ring-white/10 opacity-50">
+            <div class="flex items-center gap-3">
+              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-900/30">
+                <svg class="h-6 w-6 text-orange-300/50" viewBox="0 0 24 24" fill="currentColor"><path d="M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017L3.664 20H0l6.57-16.48zm3.753 10.066L7.907 7.278l-2.424 6.307h4.838z"/></svg>
+              </div>
+              <div>
+                <div class="font-medium text-zinc-400">Anthropic</div>
+                <span class="text-xs text-zinc-500">Coming soon</span>
+              </div>
             </div>
-            <div>
-              <div class="font-medium text-zinc-400">Anthropic</div>
-              <span class="text-xs text-zinc-500">Coming soon</span>
+            <div class="mt-4 space-y-2">
+              <div class="rounded-md bg-white/5 p-2">
+                <code class="text-xs text-zinc-500">messages.create</code>
+                <p class="mt-1 text-xs text-zinc-600">Messages, response, tokens</p>
+              </div>
             </div>
           </div>
 
-          <div class="flex items-center gap-3 rounded-xl bg-white/5 px-5 py-3 ring-1 ring-white/10 opacity-50">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-900/30">
-              <svg class="h-6 w-6 text-blue-300/50" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          <div class="rounded-xl bg-white/5 p-5 ring-1 ring-white/10 opacity-50">
+            <div class="flex items-center gap-3">
+              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-900/30">
+                <svg class="h-6 w-6 text-blue-300/50" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              </div>
+              <div>
+                <div class="font-medium text-zinc-400">Google Gemini</div>
+                <span class="text-xs text-zinc-500">Coming soon</span>
+              </div>
             </div>
-            <div>
-              <div class="font-medium text-zinc-400">Google</div>
-              <span class="text-xs text-zinc-500">Coming soon</span>
+            <div class="mt-4 space-y-2">
+              <div class="rounded-md bg-white/5 p-2">
+                <code class="text-xs text-zinc-500">generate_content</code>
+                <p class="mt-1 text-xs text-zinc-600">Messages, response, tokens</p>
+              </div>
             </div>
           </div>
         </div>
@@ -639,6 +714,18 @@ stop_tracing()</code></pre>
 
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
+
+    // Fetch GitHub stars and only show if >= 50
+    fetch('https://api.github.com/repos/kamathhrishi/sourcemapr')
+      .then(res => res.json())
+      .then(data => {
+        const stars = data.stargazers_count;
+        if (stars >= 50) {
+          document.getElementById('star-count').textContent = stars >= 1000 ? (stars / 1000).toFixed(1) + 'k' : stars;
+          document.getElementById('star-count').classList.remove('hidden');
+        }
+      })
+      .catch(() => {});
 
     function showTab(tab) {
       // Hide all code blocks

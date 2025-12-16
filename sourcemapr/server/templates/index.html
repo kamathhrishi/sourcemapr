@@ -549,7 +549,7 @@
                     <div class="flex items-center gap-2 px-4 py-2 border-b border-apple-border bg-apple-bg/30">
                         <span class="text-xs text-apple-secondary">View:</span>
                         <button onclick="setSimpleViewMode('split')" id="simple-mode-split" class="simple-mode-btn text-xs px-3 py-1 rounded-md bg-apple-blue text-white font-medium">Split</button>
-                        <button onclick="setSimpleViewMode('pdf')" id="simple-mode-pdf" class="simple-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">PDF</button>
+                        <button onclick="setSimpleViewMode('pdf')" id="simple-mode-pdf" class="simple-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">Original</button>
                         <button onclick="setSimpleViewMode('parsed')" id="simple-mode-parsed" class="simple-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">Parsed</button>
                     </div>
                     <div id="doc-simple-content" class="flex-1 flex overflow-hidden bg-apple-bg/50"></div>
@@ -600,7 +600,7 @@
                             <div class="flex items-center gap-2 px-4 py-2 border-b border-apple-border bg-apple-bg/30">
                                 <span class="text-xs text-apple-secondary">View:</span>
                                 <button onclick="setDocViewMode('split')" id="view-mode-split" class="view-mode-btn text-xs px-3 py-1 rounded-md bg-apple-blue text-white font-medium">Split</button>
-                                <button onclick="setDocViewMode('pdf')" id="view-mode-pdf" class="view-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">PDF</button>
+                                <button onclick="setDocViewMode('pdf')" id="view-mode-pdf" class="view-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">Original</button>
                                 <button onclick="setDocViewMode('parsed')" id="view-mode-parsed" class="view-mode-btn text-xs px-3 py-1 rounded-md bg-apple-bg text-apple-secondary hover:bg-apple-border/50 transition-colors">Parsed</button>
                             </div>
                             <div id="doc-source-content" class="flex-1 flex overflow-hidden bg-apple-bg/50"></div>
@@ -1544,6 +1544,87 @@
 
         // ========== Documents ==========
         let docViewMode = 'split'; // 'split', 'pdf', 'parsed'
+
+        // Supported document types for original view
+        const supportedOriginalTypes = ['pdf', 'htm', 'html'];
+
+        function getDocType(filePath) {
+            if (!filePath) return null;
+            return filePath.toLowerCase().split('.').pop();
+        }
+
+        function isOriginalViewSupported(filePath) {
+            const ext = getDocType(filePath);
+            return supportedOriginalTypes.includes(ext);
+        }
+
+        async function loadParsedDoc(docId) {
+            try {
+                const res = await fetch(`/api/parsed/${encodeURIComponent(docId)}`);
+                const parsed = await res.json();
+                if (!parsed.error) {
+                    if (!allData.parsed) allData.parsed = {};
+                    allData.parsed[docId] = parsed;
+                    // Re-render the view if this doc is still selected
+                    if (selectedDoc === docId) {
+                        renderCurrentView();
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading parsed doc:', e);
+            }
+        }
+
+        function renderCurrentView() {
+            const docChunks = Object.values(allData.chunks || {}).filter(c => c.doc_id === selectedDoc);
+            if (docChunks.length > 0) {
+                renderDocSourceView();
+            } else {
+                renderSimpleSourceView();
+            }
+        }
+
+        function updateViewModeButtons(filePath, prefix = 'view-mode') {
+            const hasOriginal = isOriginalViewSupported(filePath);
+            const splitBtn = document.getElementById(`${prefix}-split`);
+            const originalBtn = document.getElementById(`${prefix}-pdf`);
+            const parsedBtn = document.getElementById(`${prefix}-parsed`);
+            const ext = getDocType(filePath);
+
+            if (splitBtn && originalBtn) {
+                if (hasOriginal) {
+                    // Enable split and original buttons
+                    splitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    splitBtn.disabled = false;
+                    originalBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    originalBtn.disabled = false;
+
+                    // Update original button text based on type
+                    if (ext === 'pdf') {
+                        originalBtn.textContent = 'PDF';
+                    } else if (ext === 'htm' || ext === 'html') {
+                        originalBtn.textContent = 'HTML';
+                    } else {
+                        originalBtn.textContent = 'Original';
+                    }
+
+                } else {
+                    // Disable split and original buttons, switch to parsed view
+                    splitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    splitBtn.disabled = true;
+                    originalBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    originalBtn.disabled = true;
+                    originalBtn.textContent = 'Original';
+
+                    // Auto-switch to parsed view if currently on unsupported view
+                    if (prefix === 'view-mode' && (docViewMode === 'split' || docViewMode === 'pdf')) {
+                        setDocViewMode('parsed');
+                    } else if (prefix === 'simple-mode' && (simpleViewMode === 'split' || simpleViewMode === 'pdf')) {
+                        setSimpleViewMode('parsed');
+                    }
+                }
+            }
+        }
         let selectedChunkInDoc = null;
         let simpleViewMode = 'split';
         let currentPage = 1;
@@ -1707,6 +1788,16 @@
             if (!doc) return;
 
             const filePath = doc.file_path || '';
+
+            // Update view mode buttons based on document type
+            updateViewModeButtons(filePath, 'simple-mode');
+            updateViewModeButtons(filePath, 'view-mode');
+
+            // Lazy load parsed doc if not already loaded
+            if (!allData.parsed?.[id]) {
+                loadParsedDoc(id);
+            }
+
             const docChunks = Object.values(allData.chunks || {}).filter(c => c.doc_id === id);
 
             document.getElementById('doc-list-view').classList.add('hidden');
@@ -1820,7 +1911,9 @@
 
             const parsed = allData.parsed?.[selectedDoc] || {};
             const filePath = doc.file_path || '';
-            const isPdf = filePath.toLowerCase().endsWith('.pdf');
+            const fileExt = filePath.toLowerCase().split('.').pop();
+            const isPdf = fileExt === 'pdf';
+            const isHtml = ['htm', 'html'].includes(fileExt);
             const content = document.getElementById('doc-simple-content');
 
             const pages = getParsedPages(parsed);
@@ -1858,10 +1951,19 @@
                             <div class="flex flex-col border-r border-apple-border overflow-hidden" style="flex: 2;">
                                 <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-1">
                                     <i data-lucide="file-text" class="w-3 h-3"></i>
-                                    Original PDF ${highlightChunkText ? '(with highlights)' : ''}
+                                    Original ${isPdf ? 'PDF' : isHtml ? 'HTML' : 'Document'} ${highlightChunkText ? '(with highlights)' : ''}
                                 </div>
-                                ${isPdf ? `<div id="simple-pdf-viewer" class="flex-1"></div>` : `
-                                <div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No PDF available</p></div>`}
+                                ${isPdf ? `<div id="simple-pdf-viewer" class="flex-1"></div>` :
+                                  isHtml ? `<div id="simple-html-container" class="flex-1 flex flex-col">
+                                    <div id="simple-html-loading" class="flex-1 flex items-center justify-center bg-gray-50">
+                                        <div class="text-center">
+                                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue mx-auto mb-2"></div>
+                                            <p class="text-sm text-apple-secondary">Loading HTML document...</p>
+                                        </div>
+                                    </div>
+                                    <iframe id="simple-html-viewer" src="${pdfUrl}" class="flex-1 w-full bg-white hidden" sandbox="allow-same-origin" onload="document.getElementById('simple-html-loading')?.classList.add('hidden'); this.classList.remove('hidden');"></iframe>
+                                </div>` :
+                                `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No source document available</p></div>`}
                             </div>
                             <div class="flex flex-col overflow-hidden" style="flex: 1;">
                                 <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary">
@@ -1893,8 +1995,29 @@
                     lucide.createIcons();
                     // Render all pages for scrolling
                     renderPdfViewer('simple-pdf-viewer-full', pdfUrl, safePage, highlightChunkText, true);
+                } else if (isHtml) {
+                    // HTML only view - render in iframe with loading state
+                    content.innerHTML = `
+                        <div class="flex-1 flex flex-col overflow-hidden">
+                            <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-2">
+                                <i data-lucide="code" class="w-3 h-3"></i>
+                                <span>Original HTML Document</span>
+                                ${highlightChunkText ? '<span class="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs flex items-center gap-1"><i data-lucide="highlighter" class="w-3 h-3"></i>Highlighted in Parsed view</span>' : ''}
+                            </div>
+                            <div class="flex-1 flex flex-col relative">
+                                <div id="simple-html-full-loading" class="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+                                    <div class="text-center">
+                                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue mx-auto mb-2"></div>
+                                        <p class="text-sm text-apple-secondary">Loading HTML document...</p>
+                                    </div>
+                                </div>
+                                <iframe id="simple-html-viewer-full" src="${pdfUrl}" class="flex-1 w-full bg-white" sandbox="allow-same-origin" onload="document.getElementById('simple-html-full-loading')?.classList.add('hidden');"></iframe>
+                            </div>
+                        </div>
+                    `;
+                    lucide.createIcons();
                 } else {
-                    content.innerHTML = `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No PDF available</p></div>`;
+                    content.innerHTML = `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No source document available</p></div>`;
                 }
             } else if (simpleViewMode === 'parsed') {
                 // Parsed only view - show all text with scrolling
@@ -2063,7 +2186,9 @@
 
             const parsed = allData.parsed?.[selectedDoc] || {};
             const filePath = doc.file_path || '';
-            const isPdf = filePath.toLowerCase().endsWith('.pdf');
+            const fileExt = filePath.toLowerCase().split('.').pop();
+            const isPdf = fileExt === 'pdf';
+            const isHtml = ['htm', 'html'].includes(fileExt);
             const content = document.getElementById('doc-source-content');
 
             const pages = getParsedPages(parsed);
@@ -2105,10 +2230,19 @@
                             <div class="flex flex-col border-r border-apple-border overflow-hidden" style="flex: 2;">
                                 <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-1">
                                     <i data-lucide="file-text" class="w-3 h-3"></i>
-                                    Original PDF ${chunkHighlightText ? '(with highlights)' : ''}
+                                    Original ${isPdf ? 'PDF' : isHtml ? 'HTML' : 'Document'} ${chunkHighlightText ? '(with highlights)' : ''}
                                 </div>
-                                ${isPdf ? `<div id="doc-pdf-viewer" class="flex-1"></div>` : `
-                                <div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No PDF available</p></div>`}
+                                ${isPdf ? `<div id="doc-pdf-viewer" class="flex-1"></div>` :
+                                  isHtml ? `<div id="doc-html-container" class="flex-1 flex flex-col">
+                                    <div id="doc-html-loading" class="flex-1 flex items-center justify-center bg-gray-50">
+                                        <div class="text-center">
+                                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue mx-auto mb-2"></div>
+                                            <p class="text-sm text-apple-secondary">Loading HTML document...</p>
+                                        </div>
+                                    </div>
+                                    <iframe id="doc-html-viewer" src="${pdfUrl}" class="flex-1 w-full bg-white hidden" sandbox="allow-same-origin" onload="document.getElementById('doc-html-loading')?.classList.add('hidden'); this.classList.remove('hidden');"></iframe>
+                                </div>` :
+                                `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No source document available</p></div>`}
                             </div>
                             <div class="flex flex-col overflow-hidden" style="flex: 1;">
                                 <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary">
@@ -2140,8 +2274,29 @@
                     lucide.createIcons();
                     // Render all pages for scrolling
                     renderPdfViewer('doc-pdf-viewer-full', pdfUrl, safePage, chunkHighlightText, true);
+                } else if (isHtml) {
+                    // HTML only view - render in iframe with loading state
+                    content.innerHTML = `
+                        <div class="flex-1 flex flex-col overflow-hidden">
+                            <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-2">
+                                <i data-lucide="code" class="w-3 h-3"></i>
+                                <span>Original HTML Document</span>
+                                ${chunkHighlightText ? '<span class="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs flex items-center gap-1"><i data-lucide="highlighter" class="w-3 h-3"></i>Chunk highlighted in Parsed view</span>' : ''}
+                            </div>
+                            <div class="flex-1 flex flex-col relative">
+                                <div id="doc-html-full-loading" class="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+                                    <div class="text-center">
+                                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-apple-blue mx-auto mb-2"></div>
+                                        <p class="text-sm text-apple-secondary">Loading HTML document...</p>
+                                    </div>
+                                </div>
+                                <iframe id="doc-html-viewer-full" src="${pdfUrl}" class="flex-1 w-full bg-white" sandbox="allow-same-origin" onload="document.getElementById('doc-html-full-loading')?.classList.add('hidden');"></iframe>
+                            </div>
+                        </div>
+                    `;
+                    lucide.createIcons();
                 } else {
-                    content.innerHTML = `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No PDF available</p></div>`;
+                    content.innerHTML = `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No source document available</p></div>`;
                 }
             } else if (docViewMode === 'parsed') {
                 // Parsed only view - show all text with scrolling and page markers

@@ -744,28 +744,44 @@ def get_parsed_docs() -> Dict[str, Dict]:
         return result
 
 
-def get_chunks(doc_id: str = None, experiment_id: int = None) -> Dict[str, Dict]:
+def get_chunks(doc_id: str = None, experiment_id: int = None, include_text: bool = True, limit: int = None) -> Dict[str, Dict]:
     """Get chunks, optionally filtered by doc or experiment."""
     with get_db() as conn:
         cursor = conn.cursor()
+        limit_clause = f" LIMIT {limit}" if limit else ""
         if doc_id:
             cursor.execute(
-                "SELECT * FROM chunks WHERE doc_id = ? ORDER BY index_num",
+                f"SELECT * FROM chunks WHERE doc_id = ? ORDER BY index_num{limit_clause}",
                 (doc_id,)
             )
         elif experiment_id:
             cursor.execute(
-                "SELECT * FROM chunks WHERE experiment_id = ? ORDER BY created_at DESC",
+                f"SELECT * FROM chunks WHERE experiment_id = ? ORDER BY created_at DESC{limit_clause}",
                 (experiment_id,)
             )
         else:
-            cursor.execute("SELECT * FROM chunks ORDER BY created_at DESC")
+            cursor.execute(f"SELECT * FROM chunks ORDER BY created_at DESC{limit_clause}")
         result = {}
         for row in cursor.fetchall():
             data = json.loads(row['data']) if row['data'] else dict(row)
             data['experiment_id'] = row['experiment_id']
+            # Optionally truncate text for lightweight responses
+            if not include_text and 'text' in data:
+                data['text'] = data['text'][:200] + '...' if len(data.get('text', '')) > 200 else data.get('text', '')
             result[row['chunk_id']] = data
         return result
+
+
+def get_parsed_doc(doc_id: str) -> Dict:
+    """Get parsed document for a specific doc_id."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM parsed_docs WHERE doc_id = ?", (doc_id,))
+        row = cursor.fetchone()
+        if row:
+            data = json.loads(row['data']) if row['data'] else dict(row)
+            return data
+        return None
 
 
 def get_embeddings(limit: int = 100) -> List[Dict]:

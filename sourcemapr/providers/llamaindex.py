@@ -43,6 +43,7 @@ class LlamaIndexProvider(BaseProvider):
         try:
             self._setup_callbacks()
             self._patch_directory_reader()
+            self._patch_flat_reader()
             self._patch_sentence_splitter()
             self._patch_vector_store_index()
             self._patch_embeddings()
@@ -291,6 +292,58 @@ class LlamaIndexProvider(BaseProvider):
         except ImportError:
             pass
 
+    def _patch_flat_reader(self):
+        """Patch FlatReader.load_data for HTML/text file loading."""
+        try:
+            from llama_index.readers.file import FlatReader
+            original_load = FlatReader.load_data
+            store = self.store
+            register_framework = self._register_framework
+
+            def patched_load(self_reader, path, *args, **kwargs):
+                register_framework()  # Register when actually used
+                span = store.start_span("load_documents", kind="document")
+                try:
+                    result = original_load(self_reader, path, *args, **kwargs)
+
+                    # Get filename from path
+                    from pathlib import Path
+                    filepath = Path(path) if not isinstance(path, Path) else path
+                    filename = filepath.name
+
+                    store.end_span(span, attributes={
+                        "num_files": 1,
+                        "num_pages": len(result),
+                        "filename": filename,
+                    })
+
+                    # Log the document
+                    full_text = "\n\n".join([doc.text for doc in result])
+                    store.log_document(
+                        doc_id=filename,
+                        filename=filename,
+                        file_path=str(filepath),
+                        text_length=len(full_text),
+                        num_pages=len(result)
+                    )
+
+                    store.log_parsed(
+                        doc_id=filename,
+                        filename=filename,
+                        text=full_text
+                    )
+
+                    print(f"[SourcemapR] FlatReader loaded: {filename} ({len(result)} docs)")
+                    return result
+                except Exception as e:
+                    store.end_span(span, status="error")
+                    raise
+
+            FlatReader.load_data = patched_load
+            self._original_handlers['FlatReader.load_data'] = original_load
+        except ImportError:
+            pass
+
     def _patch_sentence_splitter(self):
         """Patch NodeParser base class to catch all node parsers."""
         try:
@@ -307,6 +360,25 @@ class LlamaIndexProvider(BaseProvider):
                 parser_name = self_parser.__class__.__name__
                 span = store.start_span("chunk_documents", kind="chunking")
                 try:
+                    # Extract all filenames from source documents for fallback
+                    source_filenames = []
+                    doc_id_to_filename = {}
+                    for doc in documents:
+                        if hasattr(doc, 'metadata') and doc.metadata:
+                            filename = doc.metadata.get('file_name') or doc.metadata.get('filename')
+                            if filename:
+                                source_filenames.append(filename)
+                                # Map various IDs to filename
+                                if hasattr(doc, 'doc_id') and doc.doc_id:
+                                    doc_id_to_filename[doc.doc_id] = filename
+                                if hasattr(doc, 'id_') and doc.id_:
+                                    doc_id_to_filename[doc.id_] = filename
+                                if hasattr(doc, 'ref_doc_id') and doc.ref_doc_id:
+                                    doc_id_to_filename[doc.ref_doc_id] = filename
+
+                    # Default filename if only one source document
+                    default_filename = source_filenames[0] if len(source_filenames) == 1 else None
+
                     result = original_parse(self_parser, documents, *args, **kwargs)
                     store.end_span(span, attributes={
                         "num_nodes": len(result),
@@ -316,7 +388,25 @@ class LlamaIndexProvider(BaseProvider):
 
                     for i, node in enumerate(result):
                         metadata = node.metadata or {}
-                        doc_id = metadata.get('file_name', node.ref_doc_id or '')
+
+                        # Try multiple ways to get the filename
+                        doc_id = metadata.get('file_name') or metadata.get('filename')
+
+                        if not doc_id and hasattr(node, 'ref_doc_id') and node.ref_doc_id:
+                            doc_id = doc_id_to_filename.get(node.ref_doc_id)
+
+                        if not doc_id and hasattr(node, 'source_node') and node.source_node:
+                            # For IndexNodes, check the source node
+                            src = node.source_node
+                            if hasattr(src, 'metadata'):
+                                doc_id = src.metadata.get('file_name') or src.metadata.get('filename')
+
+                        if not doc_id:
+                            # Use default if we have a single source document
+                            doc_id = default_filename or ''
+
+                        if not doc_id:
+                            doc_id = node.ref_doc_id or ''
 
                         store.log_chunk(
                             chunk_id=node.node_id,
@@ -412,6 +502,9 @@ class LlamaIndexProvider(BaseProvider):
                     elif cls_name == 'HuggingFaceEmbedding':
                         from llama_index.embeddings.huggingface import HuggingFaceEmbedding
                         setattr(HuggingFaceEmbedding, method_name, original)
+                    elif cls_name == 'FlatReader':
+                        from llama_index.readers.file import FlatReader
+                        setattr(FlatReader, method_name, original)
             except Exception:
                 pass
 

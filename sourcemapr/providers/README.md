@@ -8,14 +8,41 @@ SourceMapR auto-detects and instruments available frameworks.
 
 **Full support** — Documents, chunks, embeddings, retrieval, LLM calls.
 
-| Component | What's Traced |
-|-----------|---------------|
-| `SimpleDirectoryReader` | Document loading, file paths, page counts |
-| `SentenceSplitter` | Chunk text, indices, page numbers, char positions |
-| `VectorStoreIndex` | Index creation |
-| `QueryEngine` | Queries, retrieved chunks, similarity scores |
-| `HuggingFaceEmbedding` | Model, dimensions, duration |
-| **LLM calls** | Prompts, responses, tokens, latency (via callbacks) |
+### Document Loading
+
+| Function | What's Traced |
+|----------|---------------|
+| `SimpleDirectoryReader.load_data()` | File paths, page counts, text length, full text |
+| `FlatReader.load_data()` | HTML/text files, file path, text content |
+
+### Chunking
+
+| Function | What's Traced |
+|----------|---------------|
+| `NodeParser.get_nodes_from_documents()` | All node parsers (SentenceSplitter, etc.) |
+| ↳ Per chunk | Chunk ID, text, index, page number, start/end char positions, metadata |
+
+### Indexing
+
+| Function | What's Traced |
+|----------|---------------|
+| `VectorStoreIndex.from_documents()` | Document count, index creation |
+
+### Embeddings
+
+| Function | What's Traced |
+|----------|---------------|
+| `HuggingFaceEmbedding._get_text_embedding()` | Model name, dimensions, duration (ms) |
+
+### Query & Retrieval (via Callbacks)
+
+| Event | What's Traced |
+|-------|---------------|
+| `CBEventType.QUERY` | Query string, duration |
+| ↳ Response | Source nodes, similarity scores, response text |
+| `CBEventType.LLM` | Model, temperature, max_tokens |
+| ↳ Input | Messages (role + content) or prompt string |
+| ↳ Output | Response text, prompt/completion/total tokens, latency |
 
 ### Usage
 
@@ -39,13 +66,43 @@ stop_tracing()
 
 **Full support** — Documents, chunks, retrieval, LLM calls.
 
-| Component | What's Traced |
-|-----------|---------------|
-| `PyPDFLoader` | Document loading, file paths, page counts |
-| `DirectoryLoader` | Batch document loading |
-| `RecursiveCharacterTextSplitter` | Chunk text, indices, metadata |
-| **Retrievers** | Queries, retrieved docs, scores (via callbacks) |
-| **LLM calls** | Prompts/messages, responses, tokens (via callbacks) |
+### Document Loading
+
+| Function | What's Traced |
+|----------|---------------|
+| `BaseLoader.load()` | Base class - catches all loaders |
+| `PyPDFLoader.load()` | PDF files, pages, text content |
+| `PyPDFLoader.lazy_load()` | Lazy loading (used by DirectoryLoader) |
+| `DirectoryLoader.load()` | Batch loading, file paths, page counts |
+| `TextLoader.load()` | Plain text files |
+| `UnstructuredFileLoader.load()` | Various file formats |
+| ↳ Per document | Filename, absolute file path, page count, full text |
+
+### Chunking
+
+| Function | What's Traced |
+|----------|---------------|
+| `TextSplitter.split_documents()` | Base class - catches all splitters |
+| ↳ RecursiveCharacterTextSplitter | Chunk text, index, page number, source path |
+| ↳ CharacterTextSplitter | Chunk text, index, page number, source path |
+| ↳ Per chunk | Chunk ID, doc ID, text, index, page number, metadata |
+
+### Retrieval (via Callbacks)
+
+| Callback | What's Traced |
+|----------|---------------|
+| `on_retriever_start()` | Query string, start time |
+| `on_retriever_end()` | Retrieved documents, duration |
+| ↳ Per result | Chunk ID, score, text (500 chars), doc ID, page number, file path |
+
+### LLM Calls (via Callbacks)
+
+| Callback | What's Traced |
+|----------|---------------|
+| `on_llm_start()` | Model name, prompts |
+| `on_llm_end()` | Response text, prompt/completion/total tokens, latency |
+| `on_llm_error()` | Error message, duration |
+| `on_chat_model_start()` | Model name, messages (role + content) |
 
 ### Usage
 
@@ -85,9 +142,8 @@ handler = get_langchain_handler()
 # Use in chains
 chain.invoke(query, config={"callbacks": [handler]})
 
-# Or set globally
-from langchain_core.globals import set_llm_cache
-# handler can be added to any chain's config
+# Or in retrievers
+retriever.invoke(query, config={"callbacks": [handler]})
 ```
 
 ---
@@ -96,10 +152,24 @@ from langchain_core.globals import set_llm_cache
 
 **LLM calls only** — Direct OpenAI client instrumentation.
 
-| Component | What's Traced |
-|-----------|---------------|
-| `chat.completions.create` | Messages, response, tokens, latency, tool calls |
-| `ChatCompletion.create` (v0) | Messages, response, tokens, latency |
+### Chat Completions (v1.x)
+
+| Function | What's Traced |
+|----------|---------------|
+| `client.chat.completions.create()` | Full chat completion calls |
+| ↳ Input | Messages (role + content), model, temperature, max_tokens, stop |
+| ↳ Output | Response text, finish_reason, tool_calls |
+| ↳ Usage | Prompt tokens, completion tokens, total tokens |
+| ↳ Timing | Duration (ms) |
+| ↳ Errors | Error message on failure |
+
+### Chat Completions (v0.x Legacy)
+
+| Function | What's Traced |
+|----------|---------------|
+| `openai.ChatCompletion.create()` | Legacy chat API |
+| ↳ Input | Messages, model, temperature, max_tokens |
+| ↳ Output | Response text, token usage, duration |
 
 ### Usage
 
@@ -121,16 +191,16 @@ stop_tracing()
 
 ---
 
-## What Gets Traced
+## What Gets Traced (Summary)
 
 | Stage | Data Captured |
 |-------|---------------|
-| **Document Loading** | Filename, path, page count, text length |
-| **Parsing** | Full extracted text |
-| **Chunking** | Chunk text, index, page number, char positions |
-| **Embeddings** | Model, dimensions, duration |
-| **Retrieval** | Query, top-k chunks, similarity scores |
-| **LLM Calls** | Model, messages/prompt, response, tokens, latency |
+| **Document Loading** | Filename, absolute path, page count, text length, full text |
+| **Parsing** | Full extracted text with page breaks |
+| **Chunking** | Chunk ID, text, index, page number, char positions, metadata |
+| **Embeddings** | Model name, vector dimensions, duration |
+| **Retrieval** | Query, top-k results, similarity scores, source file paths |
+| **LLM Calls** | Model, messages/prompt, response, tokens, latency, tool calls |
 
 ---
 

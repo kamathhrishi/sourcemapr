@@ -41,6 +41,13 @@ dev = [
 ]
 llamaindex = [
     "llama-index>=0.10.0",
+    "llama-index-embeddings-huggingface>=0.2.0",
+]
+sec = [
+    "llama-index>=0.10.0",
+    "llama-index-readers-file>=0.1.0",
+    "llama-index-embeddings-huggingface>=0.2.0",
+    "unstructured>=0.10.0",
 ]
 
 [project.scripts]

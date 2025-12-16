@@ -232,12 +232,22 @@ async def get_stats(experiment_id: Optional[int] = Query(None)):
     return db.get_stats(experiment_id)
 
 
+@app.get("/api/parsed/{doc_id}")
+async def get_parsed_for_doc(doc_id: str):
+    """Get parsed document content for a specific document (lazy loading)."""
+    parsed = db.get_parsed_doc(doc_id)
+    if parsed:
+        return parsed
+    return {"error": "Not found"}
+
+
 @app.get("/api/data")
 async def get_all_data(experiment_id: Optional[int] = Query(None)):
-    """Get all data for the dashboard."""
+    """Get all data for the dashboard (lightweight - no parsed text)."""
     traces = db.get_traces(experiment_id)
     spans = db.get_spans()
-    chunks = db.get_chunks(experiment_id=experiment_id)
+    # Only get chunk metadata, not full text (for performance)
+    chunks = db.get_chunks(experiment_id=experiment_id, include_text=True, limit=500)
 
     # Get documents that have chunks in this experiment (not filtered by experiment_id)
     # This handles the case where documents were logged in one experiment but chunks in another
@@ -248,7 +258,8 @@ async def get_all_data(experiment_id: Optional[int] = Query(None)):
     else:
         documents = db.get_documents(experiment_id)
 
-    parsed = db.get_parsed_docs()
+    # Don't load parsed docs here - load lazily per document
+    parsed = {}
     embeddings = db.get_embeddings(limit=100)
     retrievals = db.get_retrievals(experiment_id, limit=50)
     llm_calls = db.get_llm_calls(experiment_id, limit=50)
@@ -375,7 +386,9 @@ async def get_original_file(file_path: str):
         '.txt': 'text/plain',
         '.md': 'text/markdown',
         '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '.doc': 'application/msword'
+        '.doc': 'application/msword',
+        '.htm': 'text/html',
+        '.html': 'text/html',
     }
 
     ext = file.suffix.lower()
