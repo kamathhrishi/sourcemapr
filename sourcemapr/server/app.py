@@ -21,6 +21,15 @@ app = FastAPI(title="SourcemapR - RAG Observability Platform")
 
 # Mount static files
 static_path = Path(__file__).parent / "static"
+dist_path = static_path / "dist"
+
+# Mount React build assets if they exist
+if dist_path.exists():
+    assets_path = dist_path / "assets"
+    if assets_path.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
+
+# Mount legacy static files
 if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
@@ -72,7 +81,24 @@ class AssignmentRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    """Serve the dashboard."""
+    """Serve the dashboard (React SPA or legacy template)."""
+    # Try React build first
+    react_path = Path(__file__).parent / "static" / "dist" / "index.html"
+    if react_path.exists():
+        return react_path.read_text()
+    # Fallback to legacy template
+    template_path = Path(__file__).parent / "templates" / "index.html"
+    return template_path.read_text()
+
+
+# Catch-all route for React Router (SPA client-side routing)
+@app.get("/experiment/{path:path}", response_class=HTMLResponse)
+async def spa_catch_all(path: str):
+    """Serve the React SPA for client-side routing."""
+    react_path = Path(__file__).parent / "static" / "dist" / "index.html"
+    if react_path.exists():
+        return react_path.read_text()
+    # Fallback to legacy template
     template_path = Path(__file__).parent / "templates" / "index.html"
     return template_path.read_text()
 

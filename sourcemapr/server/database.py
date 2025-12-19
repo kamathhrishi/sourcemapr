@@ -112,6 +112,8 @@ def init_db():
                 text TEXT,
                 text_length INTEGER,
                 page_number INTEGER,
+                start_char_idx INTEGER,
+                end_char_idx INTEGER,
                 metadata TEXT,
                 trace_id TEXT,
                 data TEXT,
@@ -119,6 +121,16 @@ def init_db():
                 FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE SET NULL
             )
         """)
+
+        # Add start_char_idx and end_char_idx columns if they don't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE chunks ADD COLUMN start_char_idx INTEGER")
+        except:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE chunks ADD COLUMN end_char_idx INTEGER")
+        except:
+            pass  # Column already exists
 
         # Embeddings table
         cursor.execute("""
@@ -552,8 +564,8 @@ def store_chunk(data: Dict) -> None:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT OR REPLACE INTO chunks
-            (chunk_id, doc_id, experiment_id, index_num, text, text_length, page_number, metadata, trace_id, data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (chunk_id, doc_id, experiment_id, index_num, text, text_length, page_number, start_char_idx, end_char_idx, metadata, trace_id, data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             chunk_data.get('chunk_id'),
             chunk_data.get('doc_id'),
@@ -562,6 +574,8 @@ def store_chunk(data: Dict) -> None:
             chunk_data.get('text'),
             chunk_data.get('text_length'),
             chunk_data.get('page_number'),
+            chunk_data.get('start_char_idx'),
+            chunk_data.get('end_char_idx'),
             json.dumps(chunk_data.get('metadata', {})),
             chunk_data.get('trace_id'),
             json.dumps(chunk_data)
@@ -765,6 +779,15 @@ def get_chunks(doc_id: str = None, experiment_id: int = None, include_text: bool
         for row in cursor.fetchall():
             data = json.loads(row['data']) if row['data'] else dict(row)
             data['experiment_id'] = row['experiment_id']
+            # Include character indices for precise chunk positioning (if available)
+            if row['start_char_idx'] is not None:
+                data['start_char_idx'] = row['start_char_idx']
+            if row['end_char_idx'] is not None:
+                data['end_char_idx'] = row['end_char_idx']
+            if row['page_number'] is not None:
+                data['page_number'] = row['page_number']
+            if row['index_num'] is not None:
+                data['index'] = row['index_num']
             # Optionally truncate text for lightweight responses
             if not include_text and 'text' in data:
                 data['text'] = data['text'][:200] + '...' if len(data.get('text', '')) > 200 else data.get('text', '')
@@ -1012,8 +1035,8 @@ def store_chunks_batch(chunks: list) -> None:
             # Bulk insert all chunks for this experiment
             cursor.executemany("""
                 INSERT OR REPLACE INTO chunks
-                (chunk_id, doc_id, experiment_id, index_num, text, text_length, page_number, metadata, trace_id, data)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (chunk_id, doc_id, experiment_id, index_num, text, text_length, page_number, start_char_idx, end_char_idx, metadata, trace_id, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
                 (
                     c.get('chunk_id'),
@@ -1023,6 +1046,8 @@ def store_chunks_batch(chunks: list) -> None:
                     c.get('text'),
                     c.get('text_length'),
                     c.get('page_number'),
+                    c.get('start_char_idx'),
+                    c.get('end_char_idx'),
                     json.dumps(c.get('metadata', {})),
                     c.get('trace_id'),
                     json.dumps(c)
@@ -1101,15 +1126,16 @@ def store_parsed_batch(parsed_docs: list) -> None:
         cursor = conn.cursor()
         cursor.executemany("""
             INSERT OR REPLACE INTO parsed_docs
-            (doc_id, filename, text, text_length, trace_id)
-            VALUES (?, ?, ?, ?, ?)
+            (doc_id, filename, text, text_length, trace_id, data)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, [
             (
                 d.get('doc_id'),
                 d.get('filename'),
                 d.get('text'),
                 len(d.get('text', '')) if d.get('text') else 0,
-                d.get('trace_id')
+                d.get('trace_id'),
+                json.dumps(d)
             ) for d in doc_list
         ])
         conn.commit()

@@ -677,6 +677,7 @@
                                 </div>
                             </div>
                             <span id="sidebar-highlight-badge" class="hidden bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">Highlighted</span>
+                            <span id="sidebar-fuzzy-note" class="hidden bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs" title="LangChain/LlamaIndex don't provide page numbers for HTML documents, so chunk location is determined via fuzzy text matching">Fuzzy Match</span>
                         </div>
                         <div id="source-sidebar-content" class="flex-1 flex flex-col overflow-hidden bg-apple-bg/30">
                         </div>
@@ -1151,10 +1152,11 @@
             }
 
             // Scroll to first highlight if present (with retry for slow renders)
+            // Use 'instant' behavior to avoid jarring scroll from top after render
             const scrollToHighlight = (retries = 3) => {
                 const firstHighlight = scrollContainer.querySelector('.textLayer .highlight');
                 if (firstHighlight) {
-                    firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    firstHighlight.scrollIntoView({ behavior: 'instant', block: 'center' });
                 } else if (retries > 0) {
                     setTimeout(() => scrollToHighlight(retries - 1), 200);
                 }
@@ -1629,6 +1631,7 @@
         let simpleViewMode = 'split';
         let currentPage = 1;
         let highlightChunkText = null; // Text to highlight in parsed view
+        let highlightChunkIdx = null; // Character indices for precise highlighting {start: number, end: number}
 
         // Pagination state for different lists
         const PAGE_SIZE = 20;
@@ -1770,9 +1773,10 @@
 
         function openDocumentViewer(id) {
             // Clear highlight unless navigating from viewChunkInPdf (which sets highlightChunkText first)
-            const isFromChunkNav = highlightChunkText !== null && selectedDoc !== id;
+            const isFromChunkNav = (highlightChunkText !== null || highlightChunkIdx !== null) && selectedDoc !== id;
             if (selectedDoc !== id && !isFromChunkNav) {
                 highlightChunkText = null;
+                highlightChunkIdx = null;
             }
             // Don't reset page if coming from chunk navigation (page already set)
             if (!isFromChunkNav) {
@@ -1862,13 +1866,56 @@
             renderSimpleSourceView();
         }
 
-        function getParsedPages(parsed) {
-            if (!parsed?.text) return [];
-            return parsed.text.split('\n\n--- PAGE BREAK ---\n\n');
+        function getParsedPages(parsed, docId = null) {
+            // If we have parsed text, show it
+            if (parsed?.text) {
+                const text = parsed.text;
+                // Check if text has page break markers
+                if (text.includes('\n\n--- PAGE BREAK ---\n\n')) {
+                    return text.split('\n\n--- PAGE BREAK ---\n\n');
+                }
+                // No page breaks - return as single page (the full extracted text)
+                return [text];
+            }
+
+            // Fallback: if no parsed text, show chunks
+            if (docId) {
+                const docChunks = Object.values(allData.chunks || {})
+                    .filter(c => c.doc_id === docId)
+                    .sort((a, b) => (a.index || 0) - (b.index || 0));
+
+                if (docChunks.length > 0) {
+                    // Combine all chunks as the parsed view
+                    const text = docChunks.map((c, idx) => c.text || '').join('\n\n');
+                    return [text];
+                }
+            }
+
+            return [];
         }
 
-        function highlightTextInContent(text, highlightStr) {
-            if (!highlightStr || !text) return escapeHtml(text);
+        function highlightTextInContent(text, highlightStr, charIndices = null) {
+            if (!text) return escapeHtml(text);
+            if (!highlightStr && !charIndices) return escapeHtml(text);
+
+            // Method 1: Use character indices if available (most precise)
+            if (charIndices && charIndices.start !== null && charIndices.end !== null) {
+                const start = Math.max(0, charIndices.start);
+                const end = Math.min(text.length, charIndices.end);
+
+                if (start < end && start < text.length) {
+                    const before = text.slice(0, start);
+                    const matched = text.slice(start, end);
+                    const after = text.slice(end);
+
+                    return escapeHtml(before) +
+                        '<mark class="chunk-highlight bg-amber-200 text-amber-900 rounded px-0.5" data-char-start="' + start + '" data-char-end="' + end + '">' +
+                        escapeHtml(matched) + '</mark>' + escapeHtml(after);
+                }
+            }
+
+            // Method 2: Fall back to fuzzy text matching
+            if (!highlightStr) return escapeHtml(text);
 
             // Clean up the search string - take first portion for matching
             const cleanSearch = highlightStr.trim().replace(/\s+/g, ' ');
@@ -1905,6 +1952,128 @@
                 escapeHtml(matched) + '</mark>' + escapeHtml(after);
         }
 
+        function highlightTextInHtmlIframe(iframeId, searchText) {
+            if (!searchText) return;
+
+            const iframe = document.getElementById(iframeId);
+            if (!iframe) return;
+
+            try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                if (!iframeDoc || !iframeDoc.body) return;
+
+                // Remove any existing highlights
+                const existingHighlights = iframeDoc.querySelectorAll('.sourcemapr-highlight');
+                existingHighlights.forEach(el => {
+                    const parent = el.parentNode;
+                    if (parent) {
+                        parent.replaceChild(iframeDoc.createTextNode(el.textContent), el);
+                        parent.normalize();
+                    }
+                });
+
+                // Add highlight style if not already added
+                if (!iframeDoc.getElementById('sourcemapr-highlight-style')) {
+                    const style = iframeDoc.createElement('style');
+                    style.id = 'sourcemapr-highlight-style';
+                    style.textContent = '.sourcemapr-highlight { background-color: #fef08a !important; color: #92400e !important; padding: 2px 4px; border-radius: 3px; box-shadow: 0 0 0 2px rgba(254, 240, 138, 0.5); }';
+                    iframeDoc.head.appendChild(style);
+                }
+
+                // Normalize whitespace in search text (same as highlightTextInContent)
+                const cleanSearch = searchText.trim().replace(/\s+/g, ' ');
+
+                // Get all text content from body, preserving node references
+                const textNodes = [];
+                const walker = iframeDoc.createTreeWalker(
+                    iframeDoc.body,
+                    NodeFilter.SHOW_TEXT,
+                    null,
+                    false
+                );
+
+                let node;
+                let fullText = '';
+                while ((node = walker.nextNode())) {
+                    const nodeText = node.textContent;
+                    textNodes.push({
+                        node: node,
+                        start: fullText.length,
+                        end: fullText.length + nodeText.length,
+                        text: nodeText
+                    });
+                    fullText += nodeText;
+                }
+
+                // Normalize full text for searching
+                const normalizedFull = fullText.replace(/\s+/g, ' ');
+
+                // Try to find match with 80 chars first, then 40 (same as parsed view)
+                let searchPortion = cleanSearch.slice(0, 80).toLowerCase();
+                let matchIdx = normalizedFull.toLowerCase().indexOf(searchPortion);
+
+                if (matchIdx === -1) {
+                    searchPortion = cleanSearch.slice(0, 40).toLowerCase();
+                    matchIdx = normalizedFull.toLowerCase().indexOf(searchPortion);
+                }
+
+                if (matchIdx === -1) {
+                    console.log('Could not find text in HTML iframe');
+                    return;
+                }
+
+                // Map normalized position back to original position
+                // Count characters while normalizing to find original position
+                let origPos = 0;
+                let normPos = 0;
+                let lastWasSpace = false;
+
+                for (let i = 0; i < fullText.length && normPos < matchIdx; i++) {
+                    const char = fullText[i];
+                    if (/\s/.test(char)) {
+                        if (!lastWasSpace) {
+                            normPos++;
+                            lastWasSpace = true;
+                        }
+                    } else {
+                        normPos++;
+                        lastWasSpace = false;
+                    }
+                    origPos = i + 1;
+                }
+
+                // Find which text node contains this position
+                const matchLen = Math.min(cleanSearch.length, 300);
+                for (const tn of textNodes) {
+                    if (origPos >= tn.start && origPos < tn.end) {
+                        const nodeOffset = origPos - tn.start;
+                        const availableLen = tn.text.length - nodeOffset;
+                        const highlightLen = Math.min(matchLen, availableLen);
+
+                        if (highlightLen > 5) {  // Only highlight if we have meaningful text
+                            try {
+                                const range = iframeDoc.createRange();
+                                range.setStart(tn.node, nodeOffset);
+                                range.setEnd(tn.node, nodeOffset + highlightLen);
+
+                                const highlight = iframeDoc.createElement('span');
+                                highlight.className = 'sourcemapr-highlight';
+                                range.surroundContents(highlight);
+
+                                // Scroll to the highlight
+                                highlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            } catch (rangeErr) {
+                                console.log('Range error:', rangeErr);
+                            }
+                        }
+                        break;
+                    }
+                }
+            } catch (e) {
+                console.log('Could not highlight in iframe:', e);
+            }
+        }
+
         function renderSimpleSourceView() {
             const doc = allData.documents?.[selectedDoc];
             if (!doc) return;
@@ -1913,10 +2082,10 @@
             const filePath = doc.file_path || '';
             const fileExt = filePath.toLowerCase().split('.').pop();
             const isPdf = fileExt === 'pdf';
-            const isHtml = ['htm', 'html'].includes(fileExt);
+            const isHtml = ['htm', 'html', 'xhtml'].includes(fileExt);
             const content = document.getElementById('doc-simple-content');
 
-            const pages = getParsedPages(parsed);
+            const pages = getParsedPages(parsed, selectedDoc);
             const totalPages = pages.length || 1;
             const safePage = Math.min(Math.max(1, currentPage), totalPages);
             const pageText = pages[safePage - 1] || 'No content for this page';
@@ -1961,7 +2130,7 @@
                                             <p class="text-sm text-apple-secondary">Loading HTML document...</p>
                                         </div>
                                     </div>
-                                    <iframe id="simple-html-viewer" src="${pdfUrl}" class="flex-1 w-full bg-white hidden" sandbox="allow-same-origin" onload="document.getElementById('simple-html-loading')?.classList.add('hidden'); this.classList.remove('hidden');"></iframe>
+                                    <iframe id="simple-html-viewer" src="${pdfUrl}" class="flex-1 w-full bg-white hidden" sandbox="allow-same-origin" onload="document.getElementById('simple-html-loading')?.classList.add('hidden'); this.classList.remove('hidden'); ${highlightChunkText ? `setTimeout(() => highlightTextInHtmlIframe('simple-html-viewer', '${escapeForJs(highlightChunkText)}'), 500);` : ''}"></iframe>
                                 </div>` :
                                 `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No source document available</p></div>`}
                             </div>
@@ -1969,7 +2138,7 @@
                                 <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary">
                                     Parsed Text (Page ${safePage})
                                 </div>
-                                <pre class="flex-1 p-3 text-xs overflow-y-auto bg-apple-bg/30 text-apple-text">${highlightTextInContent(pageText, highlightChunkText)}</pre>
+                                <pre class="flex-1 p-3 text-xs overflow-y-auto bg-apple-bg/30 text-apple-text">${highlightTextInContent(pageText, highlightChunkText, highlightChunkIdx)}</pre>
                             </div>
                         </div>
                     </div>
@@ -2011,7 +2180,7 @@
                                         <p class="text-sm text-apple-secondary">Loading HTML document...</p>
                                     </div>
                                 </div>
-                                <iframe id="simple-html-viewer-full" src="${pdfUrl}" class="flex-1 w-full bg-white" sandbox="allow-same-origin" onload="document.getElementById('simple-html-full-loading')?.classList.add('hidden');"></iframe>
+                                <iframe id="simple-html-viewer-full" src="${pdfUrl}" class="flex-1 w-full bg-white" sandbox="allow-same-origin" onload="document.getElementById('simple-html-full-loading')?.classList.add('hidden'); ${highlightChunkText ? `setTimeout(() => highlightTextInHtmlIframe('simple-html-viewer-full', '${escapeForJs(highlightChunkText)}'), 500);` : ''}"></iframe>
                             </div>
                         </div>
                     `;
@@ -2022,15 +2191,18 @@
             } else if (simpleViewMode === 'parsed') {
                 // Parsed only view - show all text with scrolling
                 const allParsedText = pages.join('\n\n━━━━━━━━━━ PAGE BREAK ━━━━━━━━━━\n\n');
+                const hasHighlightParsed = highlightChunkText || (highlightChunkIdx && highlightChunkIdx.start !== null);
+                const fuzzyMatchNote = isHtml && hasHighlightParsed ? '<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs" title="LangChain/LlamaIndex don\'t provide page numbers for HTML documents, so chunk location is determined via fuzzy text matching">Fuzzy Match</span>' : '';
                 content.innerHTML = `
                     <div class="flex-1 flex flex-col overflow-hidden">
                         <div class="px-3 py-1.5 bg-apple-bg/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-2">
                             <i data-lucide="file-text" class="w-3 h-3"></i>
                             <span>Parsed Text (${totalPages} pages) - Scroll to navigate</span>
-                            ${highlightChunkText ? '<span class="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">Highlighted</span>' : ''}
-                            ${highlightChunkText ? '<button onclick="clearHighlight(); renderSimpleSourceView();" class="ml-auto text-xs text-apple-secondary hover:text-apple-text px-2 py-0.5 bg-apple-bg rounded hover:bg-apple-border/50">Clear Highlight</button>' : ''}
+                            ${hasHighlightParsed ? '<span class="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs">Highlighted</span>' : ''}
+                            ${fuzzyMatchNote}
+                            ${hasHighlightParsed ? '<button onclick="clearHighlight(); renderSimpleSourceView();" class="ml-auto text-xs text-apple-secondary hover:text-apple-text px-2 py-0.5 bg-apple-bg rounded hover:bg-apple-border/50">Clear Highlight</button>' : ''}
                         </div>
-                        <pre class="flex-1 p-4 text-sm overflow-y-auto bg-apple-bg/30 text-apple-text">${highlightTextInContent(allParsedText, highlightChunkText)}</pre>
+                        <pre class="flex-1 p-4 text-sm overflow-y-auto bg-apple-bg/30 text-apple-text">${highlightTextInContent(allParsedText, highlightChunkText, highlightChunkIdx)}</pre>
                     </div>
                 `;
                 lucide.createIcons();
@@ -2039,7 +2211,7 @@
 
         function goToPage(page) {
             const parsed = allData.parsed?.[selectedDoc] || {};
-            const pages = getParsedPages(parsed);
+            const pages = getParsedPages(parsed, selectedDoc);
             const totalPages = pages.length || 1;
             currentPage = Math.min(Math.max(1, page), totalPages);
 
@@ -2147,17 +2319,18 @@
             renderDocSourceView();
 
             // Scroll to highlighted chunk text in both parsed view and PDF after render
+            // Use 'instant' behavior to avoid jarring scroll from top after render
             setTimeout(() => {
                 // Scroll parsed text
                 const highlighted = document.querySelector('.chunk-highlight');
                 if (highlighted) {
-                    highlighted.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    highlighted.scrollIntoView({ behavior: 'instant', block: 'center' });
                 }
                 // Scroll PDF to highlight (with retry for slow renders)
                 const scrollPdfToHighlight = (retries = 3) => {
                     const pdfHighlight = document.querySelector('#doc-pdf-viewer .textLayer .highlight, #doc-pdf-viewer-full .textLayer .highlight');
                     if (pdfHighlight) {
-                        pdfHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        pdfHighlight.scrollIntoView({ behavior: 'instant', block: 'center' });
                     } else if (retries > 0) {
                         setTimeout(() => scrollPdfToHighlight(retries - 1), 200);
                     }
@@ -2188,10 +2361,10 @@
             const filePath = doc.file_path || '';
             const fileExt = filePath.toLowerCase().split('.').pop();
             const isPdf = fileExt === 'pdf';
-            const isHtml = ['htm', 'html'].includes(fileExt);
+            const isHtml = ['htm', 'html', 'xhtml'].includes(fileExt);
             const content = document.getElementById('doc-source-content');
 
-            const pages = getParsedPages(parsed);
+            const pages = getParsedPages(parsed, selectedDoc);
             const totalPages = pages.length || 1;
             const safePage = Math.min(Math.max(1, currentPage), totalPages);
             const pageText = pages[safePage - 1] || 'No content for this page';
@@ -2240,7 +2413,7 @@
                                             <p class="text-sm text-apple-secondary">Loading HTML document...</p>
                                         </div>
                                     </div>
-                                    <iframe id="doc-html-viewer" src="${pdfUrl}" class="flex-1 w-full bg-white hidden" sandbox="allow-same-origin" onload="document.getElementById('doc-html-loading')?.classList.add('hidden'); this.classList.remove('hidden');"></iframe>
+                                    <iframe id="doc-html-viewer" src="${pdfUrl}" class="flex-1 w-full bg-white hidden" sandbox="allow-same-origin" onload="document.getElementById('doc-html-loading')?.classList.add('hidden'); this.classList.remove('hidden'); ${chunkHighlightText ? `setTimeout(() => highlightTextInHtmlIframe('doc-html-viewer', '${escapeForJs(chunkHighlightText)}'), 500);` : ''}"></iframe>
                                 </div>` :
                                 `<div class="flex-1 flex items-center justify-center text-apple-secondary"><p>No source document available</p></div>`}
                             </div>
@@ -2290,7 +2463,7 @@
                                         <p class="text-sm text-apple-secondary">Loading HTML document...</p>
                                     </div>
                                 </div>
-                                <iframe id="doc-html-viewer-full" src="${pdfUrl}" class="flex-1 w-full bg-white" sandbox="allow-same-origin" onload="document.getElementById('doc-html-full-loading')?.classList.add('hidden');"></iframe>
+                                <iframe id="doc-html-viewer-full" src="${pdfUrl}" class="flex-1 w-full bg-white" sandbox="allow-same-origin" onload="document.getElementById('doc-html-full-loading')?.classList.add('hidden'); ${chunkHighlightText ? `setTimeout(() => highlightTextInHtmlIframe('doc-html-viewer-full', '${escapeForJs(chunkHighlightText)}'), 500);` : ''}"></iframe>
                             </div>
                         </div>
                     `;
@@ -2390,9 +2563,14 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
 
         // ========== Chunk Navigation (from Retrievals) ==========
         function viewChunkInPdf(docId, pageNumber, searchText, chunkId) {
-            // Get the full chunk text for highlighting
+            // Get the full chunk text and indices for highlighting
             const chunk = allData.chunks?.[chunkId];
             highlightChunkText = chunk?.text || searchText || null;
+
+            // Extract character indices for precise highlighting if available
+            highlightChunkIdx = (chunk?.start_char_idx !== null && chunk?.start_char_idx !== undefined)
+                ? { start: chunk.start_char_idx, end: chunk.end_char_idx }
+                : null;
 
             // Navigate to document and show parsed view with highlighting
             showTab('documents');
@@ -2403,10 +2581,11 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
                 setTimeout(() => {
                     setSimpleViewMode('parsed');
                     // Scroll to highlighted text after render
+                    // Use 'instant' behavior to avoid jarring scroll from top after render
                     setTimeout(() => {
                         const highlighted = document.querySelector('.chunk-highlight');
                         if (highlighted) {
-                            highlighted.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            highlighted.scrollIntoView({ behavior: 'instant', block: 'center' });
                         }
                     }, 100);
                 }, 100);
@@ -2415,6 +2594,7 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
 
         function clearHighlight() {
             highlightChunkText = null;
+            highlightChunkIdx = null;
         }
 
         // ========== Source Sidebar (in Requests view) ==========
@@ -2473,14 +2653,19 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
             const pageNumber = chunk?.page_number || fallbackPage || 1;
             const text = chunk?.text || fallbackText || '';
 
+            // Extract character indices for precise highlighting if available
+            const charIndices = (chunk?.start_char_idx !== null && chunk?.start_char_idx !== undefined)
+                ? { start: chunk.start_char_idx, end: chunk.end_char_idx }
+                : null;
+
             if (!docId) {
                 console.log('viewChunkSource: No doc_id found for chunk', chunkId);
                 return;
             }
-            openSourceSidebar(docId, pageNumber, text);
+            openSourceSidebar(docId, pageNumber, text, charIndices);
         }
 
-        function openSourceSidebar(docId, pageNumber, chunkText) {
+        function openSourceSidebar(docId, pageNumber, chunkText, charIndices = null) {
             let doc = allData.documents?.[docId];
             let parsed = allData.parsed?.[docId];
 
@@ -2503,6 +2688,7 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
             sidebarDocId = docId;
             sidebarPage = pageNumber || 1;
             highlightChunkText = chunkText || null;
+            highlightChunkIdx = charIndices; // Store character indices for precise highlighting
             sidebarViewMode = 'parsed'; // Always start with parsed view
 
             document.getElementById('source-sidebar').classList.remove('hidden');
@@ -2520,10 +2706,11 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
             lucide.createIcons();
 
             // Scroll to highlight after render
+            // Use 'instant' behavior to avoid jarring scroll from top after render
             setTimeout(() => {
                 const highlighted = document.querySelector('#source-sidebar-content .chunk-highlight');
                 if (highlighted) {
-                    highlighted.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    highlighted.scrollIntoView({ behavior: 'instant', block: 'center' });
                 }
             }, 100);
         }
@@ -2567,16 +2754,27 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
             document.getElementById('sidebar-next').classList.toggle('opacity-30', safePage >= totalPages);
             document.getElementById('sidebar-next').classList.toggle('pointer-events-none', safePage >= totalPages);
 
-            // Show/hide highlight badge (only for parsed view)
-            document.getElementById('sidebar-highlight-badge').classList.toggle('hidden', !highlightChunkText || sidebarViewMode !== 'parsed');
+            // Detect document type
+            const filePath = doc?.file_path || '';
+            const fileExt = filePath.toLowerCase().split('.').pop();
+            const isPdf = fileExt === 'pdf';
+            const isHtml = ['htm', 'html', 'xhtml'].includes(fileExt);
+
+            // Show/hide highlight badge and fuzzy matching note
+            const hasHighlight = highlightChunkText || (highlightChunkIdx && highlightChunkIdx.start !== null);
+            document.getElementById('sidebar-highlight-badge').classList.toggle('hidden', !hasHighlight || sidebarViewMode !== 'parsed');
+
+            // Show fuzzy matching note for HTML (since LangChain/LlamaIndex don't provide page numbers for HTML)
+            const fuzzyNote = document.getElementById('sidebar-fuzzy-note');
+            if (fuzzyNote) {
+                fuzzyNote.classList.toggle('hidden', !isHtml || !hasHighlight || sidebarViewMode !== 'parsed');
+            }
 
             if (sidebarViewMode === 'parsed') {
-                // Render parsed text with highlighting
-                content.innerHTML = `<pre class="text-xs whitespace-pre-wrap text-apple-text leading-relaxed p-4 h-full overflow-y-auto">${highlightTextInContent(pageText, highlightChunkText)}</pre>`;
+                // Render parsed text with highlighting (use char indices if available, fall back to fuzzy)
+                content.innerHTML = `<pre class="text-xs whitespace-pre-wrap text-apple-text leading-relaxed p-4 h-full overflow-y-auto">${highlightTextInContent(pageText, highlightChunkText, highlightChunkIdx)}</pre>`;
             } else {
-                // Render source PDF with PDF.js for text highlighting
-                const filePath = doc?.file_path || '';
-                const isPdf = filePath.toLowerCase().endsWith('.pdf');
+                // Render source document
                 if (isPdf) {
                     const pdfUrl = `/api/files/${encodeURIComponent(filePath)}`;
                     content.innerHTML = '<div id="sidebar-pdf-viewer" class="flex-1 flex flex-col min-h-0"></div>';
@@ -2584,6 +2782,15 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
                     renderPdfViewer('sidebar-pdf-viewer', pdfUrl, safePage, highlightChunkText, false);
                     // Show highlight badge for source view too when we have highlight text
                     document.getElementById('sidebar-highlight-badge').classList.toggle('hidden', !highlightChunkText);
+                } else if (isHtml) {
+                    // Render HTML in iframe with highlighting
+                    const htmlUrl = `/api/files/${encodeURIComponent(filePath)}`;
+                    content.innerHTML = `<iframe id="sidebar-html-iframe" src="${htmlUrl}" class="w-full h-full border-0 bg-white"></iframe>`;
+                    // Try to highlight in iframe after load
+                    if (highlightChunkText) {
+                        const iframe = document.getElementById('sidebar-html-iframe');
+                        iframe.onload = () => highlightTextInHtmlIframe(iframe, highlightChunkText);
+                    }
                 } else {
                     content.innerHTML = `<div class="flex items-center justify-center h-full text-apple-secondary"><p>No source document available</p></div>`;
                 }
@@ -2625,6 +2832,7 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
             document.getElementById('source-sidebar').classList.add('hidden');
             sidebarDocId = null;
             highlightChunkText = null;
+            highlightChunkIdx = null;
         }
 
         // ========== Requests (Unified Traces + Retrievals + LLM) ==========
@@ -3170,7 +3378,7 @@ ${highlightTextInContent(pageText, chunkHighlightText)}
 
         function escapeForJs(text) {
             if (!text) return '';
-            return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/\n/g, ' ').replace(/\r/g, '');
+            return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/\n/g, ' ').replace(/\r/g, '');
         }
     </script>
 </body>

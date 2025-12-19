@@ -55,3 +55,6 @@ data/
 *.pdf
 sec_cache/
 sec_data/
+
+# Node
+node_modules/

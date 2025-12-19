@@ -52,11 +52,12 @@ def main():
     documents = loader.load()
     print(f"Loaded {len(documents)} pages")
 
-    # Split into chunks
-    print("Splitting into chunks...")
+    # Split into chunks with add_start_index=True for precise positioning
+    print("Splitting into chunks (with position tracking)...")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=512,
-        chunk_overlap=50
+        chunk_overlap=50,
+        add_start_index=True  # Enables precise chunk position tracking in UI!
     )
     chunks = text_splitter.split_documents(documents)
     print(f"Created {len(chunks)} chunks")
