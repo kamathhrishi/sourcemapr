@@ -1,5 +1,8 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { Document, Page, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+import 'react-pdf/dist/Page/TextLayer.css'
 import {
   ArrowLeft,
   FileText,
@@ -25,6 +28,9 @@ import { useAppStore } from '@/store'
 import { api } from '@/api/client'
 import type { DashboardData } from '@/api/types'
 
+// Configure PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+
 interface DocumentViewerProps {
   data: DashboardData
 }
@@ -43,7 +49,6 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     selectedChunkId,
     selectChunk,
     highlightChunkText,
-    highlightChunkIdx,
     setHighlight,
     clearHighlight,
   } = useAppStore()
@@ -51,7 +56,11 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('split')
   const [chunkSearch, setChunkSearch] = useState('')
   const [chunksExpanded, setChunksExpanded] = useState(true)
+  const [numPages, setNumPages] = useState<number>(0)
+  const [pdfLoading, setPdfLoading] = useState(true)
+  const [pdfError, setPdfError] = useState<string | null>(null)
   const parsedContainerRef = useRef<HTMLPreElement>(null)
+  const pdfContainerRef = useRef<HTMLDivElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   const decodedDocId = docId ? decodeURIComponent(docId) : null
@@ -65,12 +74,22 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
   const isHtml = ['htm', 'html', 'xhtml'].includes(fileExt)
   const fileUrl = document ? api.getFileUrl(document.file_path) : null
 
-  // Get chunks for this document
+  // Get chunks for this document - sorted by position in document
   const allChunks = useMemo(() => {
     if (!decodedDocId) return []
     return Object.values(data.chunks)
       .filter((c) => c.doc_id === decodedDocId)
-      .sort((a, b) => a.index - b.index)
+      .sort((a, b) => {
+        // Sort by start character index (position in document) if available
+        if (a.start_char_idx != null && b.start_char_idx != null) {
+          return a.start_char_idx - b.start_char_idx
+        }
+        // Fallback to page number, then index
+        if (a.page_number != null && b.page_number != null && a.page_number !== b.page_number) {
+          return a.page_number - b.page_number
+        }
+        return a.index - b.index
+      })
   }, [data.chunks, decodedDocId])
 
   // Filter chunks by search
@@ -86,8 +105,8 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     return parsedData.text.split('\n\n--- PAGE BREAK ---\n\n')
   }, [parsedData?.text])
 
-  const totalPages = pages.length || 1
-  const safePage = Math.min(Math.max(1, currentPage), totalPages)
+  const totalPages = isPdf ? numPages : pages.length || 1
+  const safePage = Math.min(Math.max(1, currentPage), totalPages || 1)
   const currentPageText = pages[safePage - 1] ?? ''
 
   // Handle back navigation
@@ -108,15 +127,9 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     }
   }
 
-  // Highlight text in content
+  // Highlight text in parsed content
   const highlightTextInContent = useCallback((text: string) => {
     if (!highlightChunkText) return text
-
-    // Use character indices if available for precise highlighting
-    if (highlightChunkIdx && viewMode === 'parsed') {
-      // For full parsed view, we need to adjust indices based on page breaks
-      // For now, use text matching
-    }
 
     // Escape special regex characters
     const escaped = highlightChunkText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -128,9 +141,89 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     } catch {
       return text
     }
-  }, [highlightChunkText, highlightChunkIdx, viewMode])
+  }, [highlightChunkText])
 
-  // Scroll to highlight after render
+  // PDF document loaded
+  const onDocumentLoadSuccess = ({ numPages: pages }: { numPages: number }) => {
+    setNumPages(pages)
+    setPdfLoading(false)
+    setPdfError(null)
+  }
+
+  const onDocumentLoadError = (error: Error) => {
+    console.error('PDF load error:', error)
+    setPdfLoading(false)
+    setPdfError('Failed to load PDF')
+  }
+
+  // Highlight text in PDF text layer
+  const highlightPdfText = useCallback(() => {
+    if (!highlightChunkText || !pdfContainerRef.current) return
+
+    // Remove previous highlights
+    const oldHighlights = pdfContainerRef.current.querySelectorAll('.pdf-chunk-highlight')
+    oldHighlights.forEach(el => el.classList.remove('pdf-chunk-highlight'))
+
+    // Find text layer elements
+    const textLayers = pdfContainerRef.current.querySelectorAll('.react-pdf__Page__textContent')
+    if (!textLayers.length) return
+
+    const searchText = highlightChunkText.toLowerCase().replace(/\s+/g, ' ').trim()
+    const searchWords = searchText.split(' ').filter(w => w.length > 3).slice(0, 10)
+
+    textLayers.forEach((textLayer) => {
+      const spans = textLayer.querySelectorAll('span')
+      let fullText = ''
+      const spanRanges: { span: Element; start: number; end: number }[] = []
+
+      // Build full text with position mapping
+      spans.forEach((span) => {
+        const text = span.textContent || ''
+        spanRanges.push({ span, start: fullText.length, end: fullText.length + text.length })
+        fullText += text
+      })
+
+      const fullTextLower = fullText.toLowerCase()
+
+      // Try to find match using first few words
+      let matchFound = false
+      for (const word of searchWords) {
+        const wordIdx = fullTextLower.indexOf(word)
+        if (wordIdx !== -1) {
+          // Find all spans that overlap with match region
+          const matchStart = wordIdx
+          const matchEnd = Math.min(wordIdx + searchText.length, fullText.length)
+
+          spanRanges.forEach(({ span, start, end }) => {
+            // Check if this span overlaps with our match
+            if (start < matchEnd && end > matchStart) {
+              span.classList.add('pdf-chunk-highlight')
+              matchFound = true
+            }
+          })
+
+          if (matchFound) {
+            // Scroll to first highlighted element
+            const firstHighlight = textLayer.querySelector('.pdf-chunk-highlight')
+            if (firstHighlight) {
+              firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }
+            break
+          }
+        }
+      }
+    })
+  }, [highlightChunkText])
+
+  // Apply PDF highlighting after page renders
+  useEffect(() => {
+    if (highlightChunkText && !pdfLoading && isPdf) {
+      const timer = setTimeout(highlightPdfText, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [highlightChunkText, pdfLoading, isPdf, currentPage, highlightPdfText])
+
+  // Scroll to highlight after render in parsed view
   useEffect(() => {
     if (highlightChunkText && parsedContainerRef.current) {
       const timer = setTimeout(() => {
@@ -172,18 +265,18 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
             iframeDoc.head.appendChild(style)
           }
 
-          // Normalize search text - get first ~100 chars for matching
+          // Normalize search text
           const searchText = highlightChunkText.replace(/\s+/g, ' ').trim()
           const searchLower = searchText.toLowerCase()
 
           // Collect all text content with node references
-          const textNodes: { node: Text; text: string; start: number }[] = []
+          const textNodes: { node: Text; text: string }[] = []
           let fullText = ''
           const walker = iframeDoc.createTreeWalker(iframeDoc.body, NodeFilter.SHOW_TEXT, null)
           let node
           while ((node = walker.nextNode())) {
             const text = node.textContent ?? ''
-            textNodes.push({ node: node as Text, text, start: fullText.length })
+            textNodes.push({ node: node as Text, text })
             fullText += text
           }
 
@@ -197,8 +290,6 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
           let highlighted = false
           for (const { node: textNode, text } of textNodes) {
             const normalizedText = text.toLowerCase()
-
-            // Check if this node contains part of our search
             const localMatch = normalizedText.indexOf(searchLower.slice(0, Math.min(50, searchLower.length)))
             if (localMatch !== -1 && !highlighted) {
               const range = iframeDoc.createRange()
@@ -213,7 +304,6 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
                 highlight.scrollIntoView({ behavior: 'instant', block: 'center' })
                 highlighted = true
               } catch {
-                // Range spans multiple nodes, just scroll to node
                 textNode.parentElement?.scrollIntoView({ behavior: 'instant', block: 'center' })
                 highlighted = true
               }
@@ -245,6 +335,37 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      {/* Custom styles for PDF highlighting */}
+      <style>{`
+        .react-pdf__Page {
+          position: relative;
+        }
+        .react-pdf__Page__canvas {
+          display: block;
+        }
+        .react-pdf__Page__textContent {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          overflow: hidden;
+          line-height: 1;
+          pointer-events: none;
+        }
+        .react-pdf__Page__textContent span {
+          position: absolute;
+          color: transparent;
+          white-space: pre;
+          transform-origin: 0 0;
+        }
+        .pdf-chunk-highlight {
+          background-color: rgba(251, 191, 36, 0.35) !important;
+          border-radius: 2px;
+          border-bottom: 2px solid #f59e0b;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-apple-border bg-apple-card shrink-0">
         <div className="flex items-center gap-3">
@@ -301,8 +422,8 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
           <div className="w-px h-6 bg-apple-border mx-2" />
 
           <Badge variant="secondary">{allChunks.length} chunks</Badge>
-          {document.num_pages && (
-            <Badge variant="secondary">{document.num_pages} pages</Badge>
+          {totalPages > 0 && (
+            <Badge variant="secondary">{totalPages} pages</Badge>
           )}
         </div>
       </div>
@@ -312,7 +433,7 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
         {/* Document View */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Page Navigation */}
-          {(viewMode === 'split' || (viewMode === 'parsed' && totalPages > 1)) && (
+          {(viewMode === 'split' || viewMode === 'pdf' || (viewMode === 'parsed' && totalPages > 1)) && totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 px-3 py-2 bg-apple-card border-b border-apple-border shrink-0">
               <Button variant="ghost" size="icon" onClick={() => setCurrentPage(1)} disabled={safePage <= 1}>
                 <ChevronsLeft className="w-4 h-4" />
@@ -337,6 +458,17 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
               <Button variant="ghost" size="icon" onClick={() => setCurrentPage(totalPages)} disabled={safePage >= totalPages}>
                 <ChevronsRight className="w-4 h-4" />
               </Button>
+              {isPdf && (
+                <div className="ml-4 flex items-center gap-1 border-l border-apple-border pl-4">
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setPdfScale(Math.max(0.5, pdfScale - 0.25))}>
+                    <ZoomOut className="w-4 h-4" />
+                  </Button>
+                  <span className="text-sm w-12 text-center">{Math.round(pdfScale * 100)}%</span>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setPdfScale(Math.min(3, pdfScale + 0.25))}>
+                    <ZoomIn className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
               {highlightChunkText && (
                 <Badge variant="warning" className="ml-4 gap-1 bg-amber-100 text-amber-700 border-0">
                   <Highlighter className="w-3 h-3" />
@@ -355,25 +487,32 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
                   <div className="px-3 py-1.5 bg-apple-tertiary/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-1 shrink-0">
                     <FileText className="w-3 h-3" />
                     Original {isPdf ? 'PDF' : isHtml ? 'HTML' : 'Document'}
-                    {isPdf && (
-                      <div className="ml-auto flex items-center gap-1">
-                        <Button variant="ghost" size="sm" className="h-6 px-1" onClick={() => setPdfScale(pdfScale - 0.2)}>
-                          <ZoomOut className="w-3 h-3" />
-                        </Button>
-                        <span className="text-xs w-10 text-center">{Math.round(pdfScale * 100)}%</span>
-                        <Button variant="ghost" size="sm" className="h-6 px-1" onClick={() => setPdfScale(pdfScale + 0.2)}>
-                          <ZoomIn className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    )}
                   </div>
-                  <div className="flex-1 overflow-auto bg-gray-100">
+                  <div className="flex-1 overflow-auto bg-gray-100" ref={pdfContainerRef}>
                     {isPdf && fileUrl ? (
-                      <iframe
-                        src={`${fileUrl}#page=${safePage}&zoom=${Math.round(pdfScale * 100)}`}
-                        className="w-full h-full border-0"
-                        title={document.filename}
-                      />
+                      <div className="flex justify-center p-4">
+                        <Document
+                          file={fileUrl}
+                          onLoadSuccess={onDocumentLoadSuccess}
+                          onLoadError={onDocumentLoadError}
+                          loading={
+                            <div className="flex items-center justify-center h-32 text-apple-secondary">
+                              Loading PDF...
+                            </div>
+                          }
+                        >
+                          <Page
+                            pageNumber={safePage}
+                            scale={pdfScale}
+                            renderTextLayer={true}
+                            renderAnnotationLayer={true}
+                            className="shadow-lg"
+                          />
+                        </Document>
+                        {pdfError && (
+                          <div className="text-red-500 text-center py-4">{pdfError}</div>
+                        )}
+                      </div>
                     ) : isHtml && fileUrl ? (
                       <iframe
                         ref={iframeRef}
@@ -416,7 +555,7 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
                   {isPdf ? (
                     <>
                       <FileText className="w-3 h-3" />
-                      Original PDF ({totalPages} pages) - Scroll to navigate
+                      Original PDF - Page {safePage} of {totalPages}
                     </>
                   ) : isHtml ? (
                     <>
@@ -430,26 +569,39 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
                       Chunk Highlighted
                     </Badge>
                   )}
-                  {isPdf && (
-                    <div className="ml-auto flex items-center gap-1">
-                      <Button variant="ghost" size="sm" className="h-6 px-1" onClick={() => setPdfScale(pdfScale - 0.2)}>
-                        <ZoomOut className="w-3 h-3" />
-                      </Button>
-                      <span className="text-xs w-10 text-center">{Math.round(pdfScale * 100)}%</span>
-                      <Button variant="ghost" size="sm" className="h-6 px-1" onClick={() => setPdfScale(pdfScale + 0.2)}>
-                        <ZoomIn className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  )}
                 </div>
-                <div className="flex-1 overflow-auto bg-gray-100">
-                  {(isPdf || isHtml) && fileUrl ? (
+                <div className="flex-1 overflow-auto bg-gray-100" ref={pdfContainerRef}>
+                  {isPdf && fileUrl ? (
+                    <div className="flex justify-center p-4">
+                      <Document
+                        file={fileUrl}
+                        onLoadSuccess={onDocumentLoadSuccess}
+                        onLoadError={onDocumentLoadError}
+                        loading={
+                          <div className="flex items-center justify-center h-32 text-apple-secondary">
+                            Loading PDF...
+                          </div>
+                        }
+                      >
+                        <Page
+                          pageNumber={safePage}
+                          scale={pdfScale}
+                          renderTextLayer={true}
+                          renderAnnotationLayer={true}
+                          className="shadow-lg"
+                        />
+                      </Document>
+                      {pdfError && (
+                        <div className="text-red-500 text-center py-4">{pdfError}</div>
+                      )}
+                    </div>
+                  ) : isHtml && fileUrl ? (
                     <iframe
                       ref={iframeRef}
-                      src={isPdf ? `${fileUrl}#zoom=${Math.round(pdfScale * 100)}` : fileUrl}
+                      src={fileUrl}
                       className="w-full h-full border-0 bg-white"
                       title={document.filename}
-                      sandbox={isHtml ? "allow-same-origin" : undefined}
+                      sandbox="allow-same-origin"
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full text-apple-secondary">
@@ -523,13 +675,13 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
               </div>
               <ScrollArea className="flex-1">
                 <div className="p-2 space-y-2">
-                  {filteredChunks.map((chunk) => (
+                  {filteredChunks.map((chunk, displayIdx) => (
                     <div
                       key={chunk.chunk_id}
                       className={`p-2 rounded-lg border cursor-pointer transition-colors text-xs ${
                         selectedChunkId === chunk.chunk_id
-                          ? 'border-apple-blue bg-apple-blue/5'
-                          : 'border-apple-border hover:border-apple-blue/50'
+                          ? 'border-orange-500 bg-orange-50 dark:bg-orange-950/30'
+                          : 'border-apple-border hover:border-orange-400/50'
                       }`}
                       onClick={() => handleChunkClick(
                         chunk.chunk_id,
@@ -541,7 +693,7 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-medium text-apple-secondary">
-                          #{chunk.index + 1}
+                          Chunk {displayIdx + 1}
                         </span>
                         <div className="flex items-center gap-1">
                           {chunk.page_number && (

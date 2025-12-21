@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, Trash2, Moon, Sun } from 'lucide-react'
+import { RefreshCw, Trash2, Moon, Sun, Layers, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { FrameworkBadge } from '@/components/common/FrameworkBadge'
@@ -23,50 +23,74 @@ export function Header({ experimentId, experiments, framework, onRefresh }: Head
   const experimentName = experiment?.name ?? 'All Experiments'
 
   const handleClear = async () => {
-    if (confirm('Are you sure you want to clear all trace data for this experiment?')) {
+    if (confirm('Are you sure you want to clear all trace data? This cannot be undone.')) {
       await clearData.mutateAsync({ experimentId: experimentId ?? undefined })
       onRefresh()
     }
   }
 
   return (
-    <header className="h-14 border-b border-apple-border bg-apple-card flex items-center px-4 gap-4">
-      {/* Back button */}
+    <header className="h-16 border-b border-apple-border bg-apple-card flex items-center px-6 gap-4">
+      {/* Back Button */}
       <Button
         variant="ghost"
-        size="icon"
+        size="sm"
         onClick={() => navigate('/')}
-        className="shrink-0"
+        className="gap-1.5 text-apple-secondary hover:text-apple-text"
       >
-        <ArrowLeft className="w-4 h-4" />
+        <ChevronLeft className="w-4 h-4" />
+        Experiments
       </Button>
 
-      {/* Experiment name */}
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <h1 className="font-semibold truncate">{experimentName}</h1>
-        {experimentId === null && (
-          <Badge variant="secondary" className="shrink-0">
-            Global
-          </Badge>
-        )}
-        {framework && <FrameworkBadge framework={framework} small />}
+      <div className="w-px h-6 bg-apple-border" />
+
+      {/* Experiment Info */}
+      <div className="flex items-center gap-4 flex-1 min-w-0">
+        <div className="w-10 h-10 rounded-lg bg-apple-tertiary flex items-center justify-center">
+          <Layers className="w-5 h-5 text-apple-secondary" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h1 className="font-semibold text-lg truncate">{experimentName}</h1>
+            {experimentId === null && (
+              <Badge variant="secondary" className="shrink-0 text-xs">
+                Global View
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-sm text-apple-secondary">
+            {framework ? (
+              <FrameworkBadge framework={framework} />
+            ) : (
+              <span>Viewing all framework traces</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-2 shrink-0">
-        <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
-          {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </Button>
-        <Button variant="ghost" size="icon" onClick={onRefresh}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRefresh}
+          className="gap-2"
+        >
           <RefreshCw className="w-4 h-4" />
+          Refresh
         </Button>
         <Button
-          variant="ghost"
-          size="icon"
+          variant="outline"
+          size="sm"
           onClick={handleClear}
-          className="text-apple-red hover:text-apple-red"
+          className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
         >
           <Trash2 className="w-4 h-4" />
+          Clear Data
+        </Button>
+        <div className="w-px h-6 bg-apple-border mx-1" />
+        <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
+          {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
       </div>
     </header>

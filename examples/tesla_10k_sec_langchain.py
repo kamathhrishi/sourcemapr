@@ -126,7 +126,7 @@ def main():
 
     # Create RAG chain
     print("\nStep 5: Setting up RAG chain...")
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    llm = ChatOpenAI(model="gpt-4.1-nano-2025-04-14", temperature=0)
 
     prompt = ChatPromptTemplate.from_template("""
 You are analyzing Tesla's 2021 10K SEC filing. Answer the question based only on the following context.

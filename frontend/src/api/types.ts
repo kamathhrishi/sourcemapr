@@ -67,6 +67,8 @@ export interface LLMCall {
   id: number
   trace_id: string | null
   model: string
+  prompt: string | null
+  input_type: string | null
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number

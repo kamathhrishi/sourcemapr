@@ -39,204 +39,202 @@ def _create_callback_handler(store: TraceStore):
         @property
         def always_verbose(self) -> bool:
             return True
-    
-    def on_llm_start(
-        self,
-        serialized: Dict[str, Any],
-        prompts: List[str],
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        **kwargs: Any,
-    ) -> None:
-        """Called when LLM starts."""
-        from langchain_core.callbacks import BaseCallbackHandler
-        model = serialized.get('name', serialized.get('id', ['unknown'])[-1])
-        self._llm_starts[str(run_id)] = {
-            "start_time": time.time(),
-            "model": model,
-            "prompts": prompts,
-            "serialized": serialized,
-        }
-        print(f"[SourcemapR] LLM call started: {model}")
-    
-    def on_llm_end(
-        self,
-        response,
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        **kwargs: Any,
-    ) -> None:
-        """Called when LLM finishes."""
-        from langchain_core.outputs import LLMResult
-        run_id_str = str(run_id)
-        llm_data = self._llm_starts.pop(run_id_str, {
-            "start_time": time.time(),
-            "model": "unknown",
-            "prompts": [],
-        })
-        duration_ms = (time.time() - llm_data["start_time"]) * 1000
-        
-        response_text = ""
-        if response.generations and response.generations[0]:
-            response_text = response.generations[0][0].text
-        
-        # Extract token usage
-        prompt_tokens = None
-        completion_tokens = None
-        total_tokens = None
-        if hasattr(response, 'llm_output') and response.llm_output:
-            usage = response.llm_output.get('token_usage', {})
-            prompt_tokens = usage.get('prompt_tokens')
-            completion_tokens = usage.get('completion_tokens')
-            total_tokens = usage.get('total_tokens')
-        
-        self.store.log_llm(
-            model=llm_data.get("model", "unknown"),
-            duration_ms=duration_ms,
-            prompt="\n".join(llm_data.get("prompts", [])),
-            response=response_text,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-            provider="langchain"
-        )
-        print(f"[SourcemapR] LLM call logged: {llm_data.get('model', 'unknown')} ({duration_ms:.0f}ms)")
-    
-    def on_llm_error(
-        self,
-        error: Exception,
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        **kwargs: Any,
-    ) -> None:
-        """Called when LLM errors."""
-        run_id_str = str(run_id)
-        llm_data = self._llm_starts.pop(run_id_str, {
-            "start_time": time.time(),
-            "model": "unknown",
-        })
-        duration_ms = (time.time() - llm_data["start_time"]) * 1000
-        
-        self.store.log_llm(
-            model=llm_data.get("model", "unknown"),
-            duration_ms=duration_ms,
-            prompt="\n".join(llm_data.get("prompts", [])),
-            error=str(error),
-            provider="langchain"
-        )
-    
-    def on_chat_model_start(
-        self,
-        serialized: Dict[str, Any],
-        messages: List[List[Any]],
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        **kwargs: Any,
-    ) -> None:
-        """Called when chat model starts."""
-        model = serialized.get('name', serialized.get('id', ['unknown'])[-1])
-        
-        # Format messages
-        formatted_messages = []
-        for msg_list in messages:
-            for msg in msg_list:
-                if hasattr(msg, 'type') and hasattr(msg, 'content'):
-                    formatted_messages.append({
-                        'role': msg.type,
-                        'content': msg.content
-                    })
-        
-        self._llm_starts[str(run_id)] = {
-            "start_time": time.time(),
-            "model": model,
-            "messages": formatted_messages,
-            "serialized": serialized,
-        }
-        print(f"[SourcemapR] Chat model started: {model}")
-    
-    def on_retriever_start(
-        self,
-        serialized: Dict[str, Any],
-        query: str,
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        **kwargs: Any,
-    ) -> None:
-        """Called when retrieval starts."""
-        self._retriever_starts[str(run_id)] = {
-            "start_time": time.time(),
-            "query": query,
-        }
-        print(f"[SourcemapR] Retrieval started: {query[:50]}...")
-    
-    def on_retriever_end(
-        self,
-        documents: List[Any],
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        **kwargs: Any,
-    ) -> None:
-        """Called when retrieval finishes."""
-        run_id_str = str(run_id)
-        retriever_data = self._retriever_starts.pop(run_id_str, {
-            "start_time": time.time(),
-            "query": "",
-        })
-        duration_ms = (time.time() - retriever_data["start_time"]) * 1000
-        
-        results = []
-        for i, doc in enumerate(documents):
-            metadata = getattr(doc, 'metadata', {})
-            source = metadata.get('source', metadata.get('file_path', ''))
-            abs_path = os.path.abspath(source) if source else ''
-            filename = os.path.basename(source) if source else ''
-            
-            # Extract character indices if available
-            start_char_idx = metadata.get('start_index')
-            end_char_idx = None
-            if start_char_idx is not None and hasattr(doc, 'page_content'):
-                end_char_idx = start_char_idx + len(doc.page_content)
-            
-            result_data = {
-                "chunk_id": metadata.get('chunk_id', f"{filename}_{i}"),
-                "score": metadata.get('score', 0),
-                "text": doc.page_content[:500] if hasattr(doc, 'page_content') else str(doc)[:500],
-                "doc_id": filename,
-                "page_number": metadata.get('page', metadata.get('page_label')),
-                "file_path": abs_path,
+
+        def on_llm_start(
+            self,
+            serialized: Dict[str, Any],
+            prompts: List[str],
+            *,
+            run_id: UUID,
+            parent_run_id: Optional[UUID] = None,
+            **kwargs: Any,
+        ) -> None:
+            """Called when LLM starts."""
+            model = serialized.get('name', serialized.get('id', ['unknown'])[-1])
+            self._llm_starts[str(run_id)] = {
+                "start_time": time.time(),
+                "model": model,
+                "prompts": prompts,
+                "serialized": serialized,
             }
-            
-            if start_char_idx is not None:
-                result_data["start_char_idx"] = start_char_idx
-            if end_char_idx is not None:
-                result_data["end_char_idx"] = end_char_idx
-            
-            results.append(result_data)
-        
-        self.store.log_retrieval(
-            query=retriever_data.get("query", ""),
-            results=results,
-            duration_ms=duration_ms,
-        )
-        print(f"[SourcemapR] Retrieval completed: {len(documents)} documents")
-    
-    def on_retriever_error(
-        self,
-        error: Exception,
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        **kwargs: Any,
-    ) -> None:
-        """Called when retrieval errors."""
-        self._retriever_starts.pop(str(run_id), None)
-    
+            print(f"[SourcemapR] LLM call started: {model}")
+
+        def on_llm_end(
+            self,
+            response,
+            *,
+            run_id: UUID,
+            parent_run_id: Optional[UUID] = None,
+            **kwargs: Any,
+        ) -> None:
+            """Called when LLM finishes."""
+            run_id_str = str(run_id)
+            llm_data = self._llm_starts.pop(run_id_str, {
+                "start_time": time.time(),
+                "model": "unknown",
+                "prompts": [],
+            })
+            duration_ms = (time.time() - llm_data["start_time"]) * 1000
+
+            response_text = ""
+            if response.generations and response.generations[0]:
+                response_text = response.generations[0][0].text
+
+            # Extract token usage
+            prompt_tokens = None
+            completion_tokens = None
+            total_tokens = None
+            if hasattr(response, 'llm_output') and response.llm_output:
+                usage = response.llm_output.get('token_usage', {})
+                prompt_tokens = usage.get('prompt_tokens')
+                completion_tokens = usage.get('completion_tokens')
+                total_tokens = usage.get('total_tokens')
+
+            self.store.log_llm(
+                model=llm_data.get("model", "unknown"),
+                duration_ms=duration_ms,
+                prompt="\n".join(llm_data.get("prompts", [])),
+                response=response_text,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                provider="langchain"
+            )
+            print(f"[SourcemapR] LLM call logged: {llm_data.get('model', 'unknown')} ({duration_ms:.0f}ms)")
+
+        def on_llm_error(
+            self,
+            error: Exception,
+            *,
+            run_id: UUID,
+            parent_run_id: Optional[UUID] = None,
+            **kwargs: Any,
+        ) -> None:
+            """Called when LLM errors."""
+            run_id_str = str(run_id)
+            llm_data = self._llm_starts.pop(run_id_str, {
+                "start_time": time.time(),
+                "model": "unknown",
+            })
+            duration_ms = (time.time() - llm_data["start_time"]) * 1000
+
+            self.store.log_llm(
+                model=llm_data.get("model", "unknown"),
+                duration_ms=duration_ms,
+                prompt="\n".join(llm_data.get("prompts", [])),
+                error=str(error),
+                provider="langchain"
+            )
+
+        def on_chat_model_start(
+            self,
+            serialized: Dict[str, Any],
+            messages: List[List[Any]],
+            *,
+            run_id: UUID,
+            parent_run_id: Optional[UUID] = None,
+            **kwargs: Any,
+        ) -> None:
+            """Called when chat model starts."""
+            model = serialized.get('name', serialized.get('id', ['unknown'])[-1])
+
+            # Format messages
+            formatted_messages = []
+            for msg_list in messages:
+                for msg in msg_list:
+                    if hasattr(msg, 'type') and hasattr(msg, 'content'):
+                        formatted_messages.append({
+                            'role': msg.type,
+                            'content': msg.content
+                        })
+
+            self._llm_starts[str(run_id)] = {
+                "start_time": time.time(),
+                "model": model,
+                "messages": formatted_messages,
+                "serialized": serialized,
+            }
+            print(f"[SourcemapR] Chat model started: {model}")
+
+        def on_retriever_start(
+            self,
+            serialized: Dict[str, Any],
+            query: str,
+            *,
+            run_id: UUID,
+            parent_run_id: Optional[UUID] = None,
+            **kwargs: Any,
+        ) -> None:
+            """Called when retrieval starts."""
+            self._retriever_starts[str(run_id)] = {
+                "start_time": time.time(),
+                "query": query,
+            }
+            print(f"[SourcemapR] Retrieval started: {query[:50]}...")
+
+        def on_retriever_end(
+            self,
+            documents: List[Any],
+            *,
+            run_id: UUID,
+            parent_run_id: Optional[UUID] = None,
+            **kwargs: Any,
+        ) -> None:
+            """Called when retrieval finishes."""
+            run_id_str = str(run_id)
+            retriever_data = self._retriever_starts.pop(run_id_str, {
+                "start_time": time.time(),
+                "query": "",
+            })
+            duration_ms = (time.time() - retriever_data["start_time"]) * 1000
+
+            results = []
+            for i, doc in enumerate(documents):
+                metadata = getattr(doc, 'metadata', {})
+                source = metadata.get('source', metadata.get('file_path', ''))
+                abs_path = os.path.abspath(source) if source else ''
+                filename = os.path.basename(source) if source else ''
+
+                # Extract character indices if available
+                start_char_idx = metadata.get('start_index')
+                end_char_idx = None
+                if start_char_idx is not None and hasattr(doc, 'page_content'):
+                    end_char_idx = start_char_idx + len(doc.page_content)
+
+                result_data = {
+                    "chunk_id": metadata.get('chunk_id', f"{filename}_{i}"),
+                    "score": metadata.get('score', 0),
+                    "text": doc.page_content[:500] if hasattr(doc, 'page_content') else str(doc)[:500],
+                    "doc_id": filename,
+                    "page_number": metadata.get('page', metadata.get('page_label')),
+                    "file_path": abs_path,
+                }
+
+                if start_char_idx is not None:
+                    result_data["start_char_idx"] = start_char_idx
+                if end_char_idx is not None:
+                    result_data["end_char_idx"] = end_char_idx
+
+                results.append(result_data)
+
+            self.store.log_retrieval(
+                query=retriever_data.get("query", ""),
+                results=results,
+                duration_ms=duration_ms,
+            )
+            print(f"[SourcemapR] Retrieval completed: {len(documents)} documents")
+
+        def on_retriever_error(
+            self,
+            error: Exception,
+            *,
+            run_id: UUID,
+            parent_run_id: Optional[UUID] = None,
+            **kwargs: Any,
+        ) -> None:
+            """Called when retrieval errors."""
+            self._retriever_starts.pop(str(run_id), None)
+
     return SourcemapRLangChainHandler()
 
 

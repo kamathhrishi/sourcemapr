@@ -9,7 +9,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Apple-inspired color scheme (matching current app)
+        // Enterprise color scheme (Cloudflare-inspired)
         apple: {
           bg: 'var(--apple-bg)',
           card: 'var(--apple-card)',
@@ -17,12 +17,25 @@ export default {
           text: 'var(--apple-text)',
           secondary: 'var(--apple-secondary)',
           tertiary: 'var(--apple-tertiary)',
-          blue: '#0071e3',
-          green: '#34c759',
-          orange: '#ff9500',
-          purple: '#af52de',
-          pink: '#ff2d55',
-          red: '#ff3b30',
+          blue: '#2563eb',
+          green: '#16a34a',
+          orange: '#f6821f',
+          purple: '#7c3aed',
+          pink: '#ec4899',
+          red: '#dc2626',
+        },
+        // Enterprise accent
+        enterprise: {
+          DEFAULT: 'var(--enterprise-accent)',
+          hover: 'var(--enterprise-accent-hover)',
+        },
+        // Sidebar colors
+        sidebar: {
+          bg: 'var(--sidebar-bg)',
+          border: 'var(--sidebar-border)',
+          hover: 'var(--sidebar-hover)',
+          active: 'var(--sidebar-active)',
+          'active-border': 'var(--sidebar-active-border)',
         },
         // Framework colors
         langchain: '#1C3C3C',
@@ -64,7 +77,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
         mono: ['JetBrains Mono', 'SF Mono', 'Menlo', 'monospace'],
       },
       borderRadius: {

@@ -72,10 +72,12 @@ def main():
     from llama_index.core.retrievers import RecursiveRetriever
     from llama_index.core.query_engine import RetrieverQueryEngine
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+    from llama_index.llms.openai import OpenAI
 
     # Configure embedding model (using local embeddings for this demo)
     print("\nStep 2: Configuring embedding model...")
     Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+    Settings.llm = OpenAI(model="gpt-4.1-nano-2025-04-14")
 
     # Check if OpenAI API key is set for LLM
     if not os.environ.get("OPENAI_API_KEY"):
