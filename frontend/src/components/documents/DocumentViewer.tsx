@@ -77,19 +77,22 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
   // Get chunks for this document - sorted by position in document
   const allChunks = useMemo(() => {
     if (!decodedDocId) return []
-    return Object.values(data.chunks)
-      .filter((c) => c.doc_id === decodedDocId)
-      .sort((a, b) => {
-        // Sort by start character index (position in document) if available
-        if (a.start_char_idx != null && b.start_char_idx != null) {
-          return a.start_char_idx - b.start_char_idx
-        }
-        // Fallback to page number, then index
-        if (a.page_number != null && b.page_number != null && a.page_number !== b.page_number) {
-          return a.page_number - b.page_number
-        }
-        return a.index - b.index
-      })
+    const chunks = Object.values(data.chunks).filter((c) => c.doc_id === decodedDocId)
+
+    // Sort by page number first, then by start_char_idx, then by index
+    chunks.sort((a, b) => {
+      const pageA = a.page_number ?? 0
+      const pageB = b.page_number ?? 0
+      if (pageA !== pageB) return pageA - pageB
+
+      const startA = a.start_char_idx ?? 0
+      const startB = b.start_char_idx ?? 0
+      if (startA !== startB) return startA - startB
+
+      return (a.index ?? 0) - (b.index ?? 0)
+    })
+
+    return chunks
   }, [data.chunks, decodedDocId])
 
   // Filter chunks by search

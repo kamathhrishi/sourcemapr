@@ -60,10 +60,12 @@ See [Supported Features](sourcemapr/providers/README.md) for details.
 ## Features
 
 - **Answer → Evidence** — Trace responses to exact chunks with scores
-- **PDF Source Viewer** — Click any chunk to see it in the original document
+- **PDF Source Viewer** — Click any chunk to see it highlighted in the original PDF
 - **Full LLM Capture** — Prompts, responses, tokens, latency
 - **Experiment Tracking** — A/B test configurations
 - **Real-time Dashboard** — Watch traces appear live
+
+> **Note:** The document viewer is optimized for **PDF files**. HTML document support is experimental — files may render but chunk highlighting and navigation may not work as expected.
 
 ---
 
@@ -93,11 +95,11 @@ sourcemapr version           # Show version
 ## Examples
 
 ```bash
-# LlamaIndex
-python examples/demo.py
+# LlamaIndex with PDFs
+python examples/llamaindex_pdf_demo.py
 
-# LangChain
-python examples/langchain_demo.py
+# LangChain with PDFs
+python examples/langchain_pdf_demo.py
 ```
 
 See [Examples](examples/README.md) for more.

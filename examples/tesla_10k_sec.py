@@ -125,7 +125,7 @@ def main():
 
     # Create recursive retriever for hierarchical retrieval
     print("\nStep 7: Setting up recursive retriever...")
-    vector_retriever_2021 = vector_index_2021.as_retriever(similarity_top_k=3)
+    vector_retriever_2021 = vector_index_2021.as_retriever(similarity_top_k=50)
 
     recursive_retriever_2021 = RecursiveRetriever(
         "vector",

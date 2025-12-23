@@ -16,6 +16,7 @@ import {
   User,
   Bot,
   AlertCircle,
+  ChevronRight,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,16 +25,165 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { SourceSidebar } from './SourceSidebar'
 import { useAppStore } from '@/store'
 import { formatLatency, formatTime, getLatencyColor } from '@/lib/utils'
-import type { DashboardData, LLMCall } from '@/api/types'
+import type { DashboardData, LLMCall, RetrievalResult } from '@/api/types'
 
 interface QueryDetailProps {
   data: DashboardData
+}
+
+// Collapsed chunk component - shows minimal info, click to expand
+function CollapsedChunk({
+  chunk,
+  idx,
+  onExpand,
+  data,
+}: {
+  chunk: RetrievalResult
+  idx: number
+  onExpand: () => void
+  data: DashboardData
+}) {
+  return (
+    <button
+      onClick={onExpand}
+      className="w-full p-3 rounded-lg border text-left hover:bg-[var(--surface-hover)] transition-colors"
+      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="w-6 h-6 rounded flex items-center justify-center text-xs font-medium"
+          style={{ background: 'var(--background-subtle)', color: 'var(--text-secondary)' }}
+        >
+          {idx + 1}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Score: {(chunk.score ?? 0).toFixed(3)}
+            </span>
+            {chunk.page_number && (
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Page {chunk.page_number}
+              </span>
+            )}
+            <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+              {data.documents[chunk.doc_id]?.filename ?? chunk.doc_id}
+            </span>
+          </div>
+          <p className="text-sm truncate mt-1" style={{ color: 'var(--text-secondary)' }}>
+            {chunk.text}
+          </p>
+        </div>
+        <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+      </div>
+    </button>
+  )
+}
+
+// Expanded chunk component - shows full details
+function ExpandedChunk({
+  chunk,
+  idx,
+  data,
+  onCollapse,
+  onCopy,
+  copiedId,
+  onViewSource,
+  canCollapse,
+}: {
+  chunk: RetrievalResult
+  idx: number
+  data: DashboardData
+  onCollapse?: () => void
+  onCopy: (text: string, id: string) => void
+  copiedId: string | null
+  onViewSource: (docId: string, pageNumber?: number | null, chunkText?: string) => void
+  canCollapse: boolean
+}) {
+  return (
+    <div
+      className="p-4 rounded-lg border"
+      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+    >
+      {/* Chunk Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-7 h-7 rounded flex items-center justify-center text-sm font-medium"
+            style={{ background: 'var(--background-subtle)', color: 'var(--text-primary)' }}
+          >
+            {idx + 1}
+          </div>
+          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Score: <span style={{ color: 'var(--text-primary)' }}>{(chunk.score ?? 0).toFixed(3)}</span>
+          </span>
+          {chunk.page_number && (
+            <Badge variant="outline" className="text-xs">
+              Page {chunk.page_number}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 gap-1 text-xs"
+            onClick={() => onCopy(chunk.text, chunk.chunk_id)}
+          >
+            {copiedId === chunk.chunk_id ? (
+              <Check className="w-3 h-3" style={{ color: 'var(--success)' }} />
+            ) : (
+              <Copy className="w-3 h-3" />
+            )}
+            Copy
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 gap-1 text-xs"
+            onClick={() => onViewSource(chunk.doc_id, chunk.page_number, chunk.text)}
+          >
+            <Eye className="w-3 h-3" />
+            View
+          </Button>
+          {canCollapse && onCollapse && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={onCollapse}
+            >
+              <ChevronUp className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Chunk Text */}
+      <div
+        className="rounded p-3 mb-3 text-sm leading-relaxed"
+        style={{ background: 'var(--background-subtle)' }}
+      >
+        {chunk.text}
+      </div>
+
+      {/* Source Doc */}
+      <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+        <FileText className="w-3.5 h-3.5" />
+        <span>{data.documents[chunk.doc_id]?.filename ?? chunk.doc_id}</span>
+        {chunk.start_char_idx != null && chunk.end_char_idx != null && (
+          <span>(chars {chunk.start_char_idx} - {chunk.end_char_idx})</span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function QueryDetail({ data }: QueryDetailProps) {
   const { queryId } = useParams<{ queryId: string }>()
   const navigate = useNavigate()
   const { currentExperimentId, sidebarDocId, openSourceSidebar } = useAppStore()
+  const [expandedChunks, setExpandedChunks] = useState<Set<number>>(new Set([0, 1, 2, 3, 4])) // First 5 expanded
   const [showAllChunks, setShowAllChunks] = useState(false)
   const [copiedText, setCopiedText] = useState<string | null>(null)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -45,26 +195,32 @@ export function QueryDetail({ data }: QueryDetailProps) {
     return data.retrievals.find((r) => r.id === Number(queryId))
   }, [data.retrievals, queryId])
 
-  // Find associated LLM call - try trace_id first, then timestamp proximity
+  // Find associated LLM call by retrieval_id (direct link)
   const llmCall = useMemo(() => {
     if (!retrieval) return null
 
-    // Try trace_id match first
+    // Primary: Match by retrieval_id (proper linking)
+    if (retrieval.retrieval_id) {
+      const match = data.llm_calls.find((l) => l.retrieval_id === retrieval.retrieval_id)
+      if (match) return match
+    }
+
+    // Fallback: Try trace_id match
     if (retrieval.trace_id) {
       const match = data.llm_calls.find((l) => l.trace_id === retrieval.trace_id)
       if (match) return match
     }
 
-    // Fall back to timestamp proximity (within 5 seconds)
+    // Last resort: timestamp proximity (for old data without retrieval_id)
     const retrievalTime = new Date(retrieval.timestamp).getTime()
     const closestCall = data.llm_calls
-      .filter(l => {
+      .filter((l) => {
         const llmTime = new Date(l.timestamp).getTime()
-        return Math.abs(llmTime - retrievalTime) < 5000 // within 5 seconds
+        return llmTime > retrievalTime && llmTime - retrievalTime < 10000
       })
       .sort((a, b) => {
-        const aTime = Math.abs(new Date(a.timestamp).getTime() - retrievalTime)
-        const bTime = Math.abs(new Date(b.timestamp).getTime() - retrievalTime)
+        const aTime = new Date(a.timestamp).getTime() - retrievalTime
+        const bTime = new Date(b.timestamp).getTime() - retrievalTime
         return aTime - bTime
       })[0]
 
@@ -72,13 +228,23 @@ export function QueryDetail({ data }: QueryDetailProps) {
   }, [data.llm_calls, retrieval])
 
   const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }))
+    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }))
+  }
+
+  const toggleChunk = (idx: number) => {
+    setExpandedChunks((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) {
+        next.delete(idx)
+      } else {
+        next.add(idx)
+      }
+      return next
+    })
   }
 
   const handleBack = () => {
-    const basePath = currentExperimentId
-      ? `/experiment/${currentExperimentId}`
-      : '/experiment/all'
+    const basePath = currentExperimentId ? `/experiment/${currentExperimentId}` : '/experiment/all'
     navigate(`${basePath}/queries`)
   }
 
@@ -108,7 +274,7 @@ export function QueryDetail({ data }: QueryDetailProps) {
       <div className="p-6">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-apple-secondary">Query not found</p>
+            <p style={{ color: 'var(--text-secondary)' }}>Query not found</p>
             <Button variant="outline" className="mt-4" onClick={handleBack}>
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Queries
@@ -119,144 +285,163 @@ export function QueryDetail({ data }: QueryDetailProps) {
     )
   }
 
+  // Show first 10 chunks by default, or all if showAllChunks is true
+  const INITIAL_CHUNKS = 10
   const displayedChunks = showAllChunks
     ? retrieval.results
-    : retrieval.results.slice(0, 5)
+    : retrieval.results.slice(0, INITIAL_CHUNKS)
 
   const messages = llmCall ? parseMessages(llmCall) : []
 
   return (
     <div className="h-full flex overflow-hidden">
       {/* Main Content */}
-      <ScrollArea className={`flex-1 ${sidebarDocId ? '' : ''}`}>
-        <div className="p-6 space-y-6 max-w-6xl">
+      <ScrollArea className="flex-1">
+        <div className="p-6 space-y-5 max-w-5xl">
           {/* Header */}
-          <div className="flex items-center gap-4">
-            <Button variant="outline" size="sm" onClick={handleBack} className="gap-2">
-              <ArrowLeft className="w-4 h-4" />
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" onClick={handleBack} className="gap-1.5 h-8">
+              <ArrowLeft className="w-3.5 h-3.5" />
               Back
             </Button>
             <div className="flex-1" />
-            <div className="flex items-center gap-3">
-              <Badge variant="secondary" className="gap-1.5 px-3 py-1">
-                <Layers className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="gap-1 px-2 py-0.5 text-xs">
+                <Layers className="w-3 h-3" />
                 {retrieval.num_results} chunks
               </Badge>
-              <Badge
-                variant={retrieval.duration_ms < 500 ? 'success' : retrieval.duration_ms < 2000 ? 'warning' : 'destructive'}
-                className="gap-1.5 px-3 py-1"
-              >
-                <Clock className="w-3.5 h-3.5" />
+              <Badge variant="outline" className="gap-1 px-2 py-0.5 text-xs">
+                <Clock className="w-3 h-3" />
                 {formatLatency(retrieval.duration_ms)}
               </Badge>
-              <span className="text-sm text-apple-secondary">{formatTime(retrieval.timestamp)}</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {formatTime(retrieval.timestamp)}
+              </span>
             </div>
           </div>
 
           {/* Query Section */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Search className="w-4 h-4 text-purple-500" />
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                <Search className="w-4 h-4" />
                 User Query
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/30 dark:to-indigo-950/30 p-4 rounded-lg border border-purple-100 dark:border-purple-900">
-                <p className="text-base leading-relaxed">{retrieval.query}</p>
-              </div>
+            <CardContent className="px-4 pb-4">
+              <p className="text-base leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                {retrieval.query}
+              </p>
             </CardContent>
           </Card>
 
           {/* LLM Call Section */}
           {llmCall ? (
             <Card>
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-2 pt-4 px-4">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-orange-500" />
+                  <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                    <Cpu className="w-4 h-4" />
                     LLM Call Details
                   </CardTitle>
-                  <Badge variant={llmCall.status === 'success' ? 'success' : 'destructive'}>
+                  <Badge variant={llmCall.status === 'success' ? 'secondary' : 'destructive'} className="text-xs">
                     {llmCall.status}
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-4 px-4 pb-4">
                 {/* Model Info Bar */}
-                <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 rounded-lg border border-orange-100 dark:border-orange-900">
-                  <div className="w-12 h-12 rounded-xl bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
-                    <Cpu className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-                  </div>
+                <div
+                  className="flex items-center gap-4 p-3 rounded-lg"
+                  style={{ background: 'var(--background-subtle)' }}
+                >
                   <div className="flex-1">
-                    <div className="font-semibold text-lg">{llmCall.model}</div>
-                    <div className="text-sm text-apple-secondary">
+                    <div className="font-medium">{llmCall.model}</div>
+                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                       {llmCall.input_type === 'chat' ? 'Chat Completion' : 'Completion'} API
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`text-xl font-bold ${getLatencyColor(llmCall.duration_ms)}`}>
+                    <div className={`text-lg font-semibold ${getLatencyColor(llmCall.duration_ms)}`}>
                       {formatLatency(llmCall.duration_ms)}
                     </div>
-                    <div className="text-xs text-apple-secondary">Latency</div>
+                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      Latency
+                    </div>
                   </div>
                 </div>
 
                 {/* Token Stats */}
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="p-4 bg-apple-tertiary rounded-lg text-center">
-                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{llmCall.prompt_tokens ?? 0}</div>
-                    <div className="text-xs text-apple-secondary mt-1">Prompt Tokens</div>
-                  </div>
-                  <div className="p-4 bg-apple-tertiary rounded-lg text-center">
-                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">{llmCall.completion_tokens ?? 0}</div>
-                    <div className="text-xs text-apple-secondary mt-1">Completion Tokens</div>
-                  </div>
-                  <div className="p-4 bg-apple-tertiary rounded-lg text-center">
-                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{llmCall.total_tokens ?? 0}</div>
-                    <div className="text-xs text-apple-secondary mt-1">Total Tokens</div>
-                  </div>
-                  <div className="p-4 bg-apple-tertiary rounded-lg text-center">
-                    <div className="text-2xl font-bold">{llmCall.temperature ?? 0}</div>
-                    <div className="text-xs text-apple-secondary mt-1">Temperature</div>
-                  </div>
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    { label: 'Prompt Tokens', value: llmCall.prompt_tokens ?? 0 },
+                    { label: 'Completion Tokens', value: llmCall.completion_tokens ?? 0 },
+                    { label: 'Total Tokens', value: llmCall.total_tokens ?? 0 },
+                    { label: 'Temperature', value: llmCall.temperature ?? 0 },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="p-3 rounded-lg text-center"
+                      style={{ background: 'var(--background-subtle)' }}
+                    >
+                      <div className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {stat.value}
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        {stat.label}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Prompt / Messages */}
-                <div className="border border-apple-border rounded-lg overflow-hidden">
+                <div className="border rounded-lg overflow-hidden" style={{ borderColor: 'var(--border)' }}>
                   <button
                     onClick={() => toggleSection('prompt')}
-                    className="w-full flex items-center justify-between p-4 bg-apple-tertiary/50 hover:bg-apple-tertiary transition-colors"
+                    className="w-full flex items-center justify-between p-3 hover:bg-[var(--surface-hover)] transition-colors"
+                    style={{ background: 'var(--background-subtle)' }}
                   >
-                    <div className="flex items-center gap-2 font-medium">
-                      <MessageSquare className="w-4 h-4 text-blue-500" />
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <MessageSquare className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
                       Input Prompt
                       {messages.length > 0 && (
-                        <Badge variant="secondary" className="ml-2">{messages.length} messages</Badge>
+                        <Badge variant="secondary" className="ml-1 text-xs">
+                          {messages.length} messages
+                        </Badge>
                       )}
                     </div>
-                    {expandedSections.prompt ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    {expandedSections.prompt ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
                   </button>
                   {expandedSections.prompt && (
-                    <div className="p-4 space-y-3 max-h-96 overflow-auto">
+                    <div className="p-3 space-y-2 max-h-80 overflow-auto">
                       {messages.length > 0 ? (
                         messages.map((msg, idx) => (
-                          <div key={idx} className={`p-3 rounded-lg ${
-                            msg.role === 'user'
-                              ? 'bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900'
-                              : msg.role === 'system'
-                              ? 'bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-800'
-                              : 'bg-green-50 dark:bg-green-950/30 border border-green-100 dark:border-green-900'
-                          }`}>
+                          <div
+                            key={idx}
+                            className="p-3 rounded-lg border"
+                            style={{
+                              background: 'var(--surface)',
+                              borderColor: 'var(--border)',
+                            }}
+                          >
                             <div className="flex items-center gap-2 mb-2">
                               {msg.role === 'user' ? (
-                                <User className="w-4 h-4 text-blue-500" />
+                                <User className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
                               ) : msg.role === 'system' ? (
-                                <AlertCircle className="w-4 h-4 text-gray-500" />
+                                <AlertCircle className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
                               ) : (
-                                <Bot className="w-4 h-4 text-green-500" />
+                                <Bot className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
                               )}
-                              <span className="text-xs font-medium uppercase text-apple-secondary">{msg.role}</span>
+                              <span
+                                className="text-xs font-medium uppercase"
+                                style={{ color: 'var(--text-muted)' }}
+                              >
+                                {msg.role}
+                              </span>
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -264,7 +449,7 @@ export function QueryDetail({ data }: QueryDetailProps) {
                                 onClick={() => copyToClipboard(msg.content, `msg-${idx}`)}
                               >
                                 {copiedText === `msg-${idx}` ? (
-                                  <Check className="w-3 h-3 text-green-500" />
+                                  <Check className="w-3 h-3" style={{ color: 'var(--success)' }} />
                                 ) : (
                                   <Copy className="w-3 h-3" />
                                 )}
@@ -274,48 +459,61 @@ export function QueryDetail({ data }: QueryDetailProps) {
                           </div>
                         ))
                       ) : llmCall.prompt ? (
-                        <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900">
+                        <div
+                          className="p-3 rounded-lg border"
+                          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+                        >
                           <pre className="text-sm whitespace-pre-wrap font-mono">{llmCall.prompt}</pre>
                         </div>
                       ) : (
-                        <p className="text-apple-secondary text-sm">No prompt data available</p>
+                        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                          No prompt data available
+                        </p>
                       )}
                     </div>
                   )}
                 </div>
 
                 {/* Response */}
-                <div className="border border-apple-border rounded-lg overflow-hidden">
+                <div className="border rounded-lg overflow-hidden" style={{ borderColor: 'var(--border)' }}>
                   <button
                     onClick={() => toggleSection('response')}
-                    className="w-full flex items-center justify-between p-4 bg-apple-tertiary/50 hover:bg-apple-tertiary transition-colors"
+                    className="w-full flex items-center justify-between p-3 hover:bg-[var(--surface-hover)] transition-colors"
+                    style={{ background: 'var(--background-subtle)' }}
                   >
-                    <div className="flex items-center gap-2 font-medium">
-                      <Bot className="w-4 h-4 text-green-500" />
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Bot className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
                       LLM Response
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 px-2"
+                        className="h-6 px-2"
                         onClick={(e) => {
                           e.stopPropagation()
                           copyToClipboard(llmCall.response, 'response')
                         }}
                       >
                         {copiedText === 'response' ? (
-                          <Check className="w-3 h-3 text-green-500" />
+                          <Check className="w-3 h-3" style={{ color: 'var(--success)' }} />
                         ) : (
                           <Copy className="w-3 h-3" />
                         )}
                       </Button>
-                      {expandedSections.response ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      {expandedSections.response ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
                     </div>
                   </button>
                   {expandedSections.response && (
-                    <div className="p-4 max-h-96 overflow-auto">
-                      <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-100 dark:border-green-900">
+                    <div className="p-3 max-h-80 overflow-auto">
+                      <div
+                        className="p-3 rounded-lg"
+                        style={{ background: 'var(--surface)' }}
+                      >
                         <pre className="text-sm whitespace-pre-wrap font-mono">{llmCall.response}</pre>
                       </div>
                     </div>
@@ -324,12 +522,19 @@ export function QueryDetail({ data }: QueryDetailProps) {
 
                 {/* Error */}
                 {llmCall.error && (
-                  <div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertCircle className="w-4 h-4 text-red-500" />
-                      <span className="font-medium text-red-600 dark:text-red-400">Error</span>
+                  <div
+                    className="p-3 rounded-lg border"
+                    style={{ background: 'var(--error-subtle)', borderColor: 'var(--error)' }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <AlertCircle className="w-4 h-4" style={{ color: 'var(--error)' }} />
+                      <span className="font-medium text-sm" style={{ color: 'var(--error)' }}>
+                        Error
+                      </span>
                     </div>
-                    <p className="text-sm text-red-600 dark:text-red-400">{llmCall.error}</p>
+                    <p className="text-sm" style={{ color: 'var(--error)' }}>
+                      {llmCall.error}
+                    </p>
                   </div>
                 )}
               </CardContent>
@@ -337,89 +542,53 @@ export function QueryDetail({ data }: QueryDetailProps) {
           ) : (
             <Card>
               <CardContent className="py-8 text-center">
-                <Cpu className="w-10 h-10 mx-auto mb-3 text-apple-secondary" />
-                <p className="text-apple-secondary">No LLM call found for this query</p>
-                <p className="text-xs text-apple-secondary mt-1">The retrieval may not have triggered an LLM call</p>
+                <Cpu className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
+                <p style={{ color: 'var(--text-secondary)' }}>No LLM call found for this query</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  The retrieval may not have triggered an LLM call
+                </p>
               </CardContent>
             </Card>
           )}
 
           {/* Source Attribution - Retrieved Chunks */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Layers className="w-4 h-4 text-blue-500" />
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                <Layers className="w-4 h-4" />
                 Source Attribution ({retrieval.results.length} chunks retrieved)
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {displayedChunks.map((chunk, idx) => (
-                  <div
-                    key={`${chunk.chunk_id}-${idx}`}
-                    className="p-4 rounded-xl border border-apple-border hover:border-blue-300 dark:hover:border-blue-700 transition-colors bg-apple-card"
-                  >
-                    {/* Chunk Header */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
-                          <span className="text-sm font-bold text-blue-600 dark:text-blue-400">#{idx + 1}</span>
-                        </div>
-                        <Badge variant="secondary" className="gap-1">
-                          Score: {chunk.score.toFixed(3)}
-                        </Badge>
-                        {chunk.page_number && (
-                          <Badge variant="outline">Page {chunk.page_number}</Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5"
-                          onClick={() => copyToClipboard(chunk.text, chunk.chunk_id)}
-                        >
-                          {copiedText === chunk.chunk_id ? (
-                            <Check className="w-3.5 h-3.5 text-green-500" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                          Copy
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5"
-                          onClick={() => handleViewSource(chunk.doc_id, chunk.page_number, chunk.text)}
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          View Source
-                        </Button>
-                      </div>
-                    </div>
+            <CardContent className="px-4 pb-4">
+              <div className="space-y-2">
+                {displayedChunks.map((chunk, idx) =>
+                  expandedChunks.has(idx) ? (
+                    <ExpandedChunk
+                      key={`${chunk.chunk_id}-${idx}`}
+                      chunk={chunk}
+                      idx={idx}
+                      data={data}
+                      onCollapse={idx >= 5 ? () => toggleChunk(idx) : undefined}
+                      onCopy={copyToClipboard}
+                      copiedId={copiedText}
+                      onViewSource={handleViewSource}
+                      canCollapse={idx >= 5}
+                    />
+                  ) : (
+                    <CollapsedChunk
+                      key={`${chunk.chunk_id}-${idx}`}
+                      chunk={chunk}
+                      idx={idx}
+                      onExpand={() => toggleChunk(idx)}
+                      data={data}
+                    />
+                  )
+                )}
 
-                    {/* Chunk Text */}
-                    <div className="bg-apple-tertiary/50 rounded-lg p-3 mb-3">
-                      <p className="text-sm leading-relaxed">{chunk.text}</p>
-                    </div>
-
-                    {/* Source Doc */}
-                    <div className="flex items-center gap-2 text-sm text-apple-secondary">
-                      <FileText className="w-4 h-4" />
-                      <span className="font-medium">{data.documents[chunk.doc_id]?.filename ?? chunk.doc_id}</span>
-                      {chunk.start_char_idx != null && chunk.end_char_idx != null && (
-                        <span className="text-xs">
-                          (chars {chunk.start_char_idx} - {chunk.end_char_idx})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {retrieval.results.length > 5 && (
+                {retrieval.results.length > INITIAL_CHUNKS && (
                   <Button
                     variant="outline"
-                    className="w-full h-12"
+                    className="w-full h-10 text-sm"
                     onClick={() => setShowAllChunks(!showAllChunks)}
                   >
                     {showAllChunks ? (
@@ -430,7 +599,7 @@ export function QueryDetail({ data }: QueryDetailProps) {
                     ) : (
                       <>
                         <ChevronDown className="w-4 h-4 mr-2" />
-                        Show All Chunks ({retrieval.results.length - 5} more)
+                        Show All ({retrieval.results.length - INITIAL_CHUNKS} more)
                       </>
                     )}
                   </Button>

@@ -16,14 +16,16 @@
 
 ---
 
-## LlamaIndex Example
+## PDF Examples (Recommended)
 
-**File:** `demo.py`
+### LlamaIndex PDF Example
 
-Basic RAG with LlamaIndex using the attention paper, Llama 2 paper, and RAG paper.
+**File:** `llamaindex_pdf_demo.py`
+
+Basic RAG with LlamaIndex using PDF documents (attention paper, Llama 2 paper, RAG paper).
 
 ```bash
-python examples/demo.py
+python examples/llamaindex_pdf_demo.py
 ```
 
 **What it does:**
@@ -33,15 +35,15 @@ python examples/demo.py
 
 ---
 
-## LangChain Example
+### LangChain PDF Example
 
-**File:** `langchain_demo.py`
+**File:** `langchain_pdf_demo.py`
 
-Basic RAG with LangChain using FAISS and OpenAI.
+Basic RAG with LangChain using FAISS and OpenAI with PDF documents.
 
 ```bash
 pip install langchain langchain-openai langchain-community faiss-cpu pypdf
-python examples/langchain_demo.py
+python examples/langchain_pdf_demo.py
 ```
 
 **What it does:**
@@ -49,6 +51,32 @@ python examples/langchain_demo.py
 - Chunks with RecursiveCharacterTextSplitter
 - Creates FAISS vector store
 - Builds RAG chain with ChatOpenAI
+
+---
+
+## HTML Examples (Experimental)
+
+> **Note:** HTML document support is experimental. The document viewer works best with PDFs. HTML files may render but chunk highlighting and page navigation may not work as expected.
+
+### Tesla 10K SEC Filing (LlamaIndex)
+
+**File:** `tesla_10k_sec.py`
+
+Demonstrates hierarchical retrieval with SEC HTML filings.
+
+```bash
+python examples/tesla_10k_sec.py
+```
+
+### Tesla 10K SEC Filing (LangChain)
+
+**File:** `tesla_10k_sec_langchain.py`
+
+Same as above but using LangChain.
+
+```bash
+python examples/tesla_10k_sec_langchain.py
+```
 
 ---
 

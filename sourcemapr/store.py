@@ -85,6 +85,11 @@ class TraceStore:
         self.current_trace: Optional[Trace] = None
         self.span_stack: List[Span] = []
 
+        # Queue of retrieval_ids for linking to subsequent LLM calls
+        # (retrieval and LLM may run on different threads in some frameworks)
+        self._retrieval_id_queue: List[str] = []
+        self._retrieval_lock = threading.Lock()
+
         # Async sending
         self._send_queue: queue.Queue = queue.Queue()
         self._sender_thread: Optional[threading.Thread] = None
@@ -321,8 +326,15 @@ class TraceStore:
             }
         })
 
-    def log_retrieval(self, query: str, results: List[Dict], duration_ms: float, response: str = None):
+    def log_retrieval(self, query: str, results: List[Dict], duration_ms: float, response: str = None, retrieval_id: str = None):
         """Log a retrieval operation."""
+        # Use provided retrieval_id or generate a new one
+        if retrieval_id is None:
+            retrieval_id = str(uuid.uuid4())[:12]
+            # Add to queue for the next LLM call to pick up (only if we generated it)
+            with self._retrieval_lock:
+                self._retrieval_id_queue.append(retrieval_id)
+
         data = {
             "type": "retrieval",
             "data": {
@@ -332,7 +344,8 @@ class TraceStore:
                 "duration_ms": duration_ms,
                 "response": response,
                 "timestamp": datetime.now().isoformat(),
-                "trace_id": self.current_trace.trace_id if self.current_trace else None
+                "trace_id": self.current_trace.trace_id if self.current_trace else None,
+                "retrieval_id": retrieval_id  # Unique ID to link with LLM call
             }
         }
         print(f"[SourcemapR] Sending retrieval: {query[:30]}...")
@@ -361,11 +374,18 @@ class TraceStore:
         **kwargs
     ):
         """Log an LLM call with full details."""
+        # Get retrieval_id from queue (if this LLM call follows a retrieval)
+        retrieval_id = None
+        with self._retrieval_lock:
+            if self._retrieval_id_queue:
+                retrieval_id = self._retrieval_id_queue.pop(0)
+
         data = {
             "model": model,
             "duration_ms": duration_ms,
             "timestamp": datetime.now().isoformat(),
             "trace_id": self.current_trace.trace_id if self.current_trace else None,
+            "retrieval_id": retrieval_id,  # Link to the preceding retrieval
         }
 
         # Input - either prompt string or messages array

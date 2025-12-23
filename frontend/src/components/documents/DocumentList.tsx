@@ -1,17 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileText, Search, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { useAppStore } from '@/store'
 import type { DashboardData } from '@/api/types'
 
@@ -65,108 +56,166 @@ export function DocumentList({ data }: DocumentListProps) {
   }
 
   return (
-    <div className="h-full overflow-auto p-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              Documents ({documents.length})
-            </CardTitle>
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-apple-secondary" />
-              <Input
-                placeholder="Search documents..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value)
-                  setDocsPage(1)
-                }}
-                className="pl-9"
-              />
-            </div>
+    <div className="h-full overflow-auto p-6" style={{ background: 'var(--background)' }}>
+      <div className="console-card">
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: '1px solid var(--border)' }}
+        >
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              Documents
+            </span>
+            <span
+              className="text-xs px-1.5 py-0.5 rounded"
+              style={{ background: 'var(--background-subtle)', color: 'var(--text-muted)' }}
+            >
+              {documents.length}
+            </span>
           </div>
-        </CardHeader>
-        <CardContent>
-          {paginatedDocs.length > 0 ? (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Filename</TableHead>
-                    <TableHead className="w-24 text-right">Pages</TableHead>
-                    <TableHead className="w-24 text-right">Chunks</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedDocs.map((doc) => (
-                    <TableRow
-                      key={doc.doc_id}
-                      className="cursor-pointer"
-                      onClick={() => handleDocClick(doc.doc_id)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-apple-secondary" />
-                          <span className="font-medium">{doc.filename}</span>
-                        </div>
-                        <div className="text-xs text-apple-secondary mt-0.5 truncate max-w-md">
-                          {doc.file_path}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {doc.num_pages ?? '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {getChunkCount(doc.doc_id)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+          <div className="relative">
+            <Search
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5"
+              style={{ color: 'var(--text-muted)' }}
+            />
+            <Input
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value)
+                setDocsPage(1)
+              }}
+              className="pl-8 h-7 w-48 text-xs"
+              style={{ background: 'var(--background)', borderColor: 'var(--border)' }}
+            />
+          </div>
+        </div>
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-apple-border">
-                  <div className="text-sm text-apple-secondary">
-                    Showing {(docsPage - 1) * PAGE_SIZE + 1}-
-                    {Math.min(docsPage * PAGE_SIZE, filteredDocs.length)} of{' '}
-                    {filteredDocs.length}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setDocsPage(docsPage - 1)}
-                      disabled={docsPage === 1}
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </Button>
-                    <span className="text-sm">
-                      Page {docsPage} of {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setDocsPage(docsPage + 1)}
-                      disabled={docsPage === totalPages}
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </Button>
-                  </div>
+        {/* Table */}
+        {paginatedDocs.length > 0 ? (
+          <>
+            <table className="w-full">
+              <thead>
+                <tr style={{ background: 'var(--background-subtle)' }}>
+                  <th
+                    className="text-left px-4 py-2 text-[11px] font-medium uppercase tracking-wider"
+                    style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}
+                  >
+                    Filename
+                  </th>
+                  <th
+                    className="text-right px-4 py-2 text-[11px] font-medium uppercase tracking-wider w-20"
+                    style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}
+                  >
+                    Pages
+                  </th>
+                  <th
+                    className="text-right px-4 py-2 text-[11px] font-medium uppercase tracking-wider w-20"
+                    style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}
+                  >
+                    Chunks
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedDocs.map((doc, idx) => (
+                  <tr
+                    key={doc.doc_id}
+                    className="cursor-pointer transition-colors"
+                    style={{
+                      borderBottom: idx < paginatedDocs.length - 1 ? '1px solid var(--border)' : 'none',
+                    }}
+                    onClick={() => handleDocClick(doc.doc_id)}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-8 h-8 rounded flex items-center justify-center shrink-0"
+                          style={{ background: 'var(--background-subtle)' }}
+                        >
+                          <FileText className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                            {doc.filename}
+                          </div>
+                          <div className="text-xs truncate max-w-md mono" style={{ color: 'var(--text-muted)' }}>
+                            {doc.file_path}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-sm mono" style={{ color: 'var(--text-secondary)' }}>
+                        {doc.num_pages ?? '-'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span
+                        className="text-xs px-1.5 py-0.5 rounded mono"
+                        style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+                      >
+                        {getChunkCount(doc.doc_id)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ borderTop: '1px solid var(--border)' }}
+              >
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {(docsPage - 1) * PAGE_SIZE + 1}–{Math.min(docsPage * PAGE_SIZE, filteredDocs.length)} of {filteredDocs.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setDocsPage(docsPage - 1)}
+                    disabled={docsPage === 1}
+                    className="h-7 w-7"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </Button>
+                  <span className="text-xs px-2" style={{ color: 'var(--text-secondary)' }}>
+                    {docsPage} / {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setDocsPage(docsPage + 1)}
+                    disabled={docsPage === totalPages}
+                    className="h-7 w-7"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
-              )}
-            </>
-          ) : (
-            <div className="text-center py-12">
-              <FileText className="w-12 h-12 mx-auto mb-4 text-apple-secondary" />
-              <p className="text-apple-secondary">
-                {searchTerm ? 'No documents match your search' : 'No documents yet'}
-              </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="py-12 text-center">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center mx-auto mb-3"
+              style={{ background: 'var(--background-subtle)' }}
+            >
+              <FileText className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              {searchTerm ? 'No documents match your search' : 'No documents yet'}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

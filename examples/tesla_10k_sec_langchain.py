@@ -121,7 +121,7 @@ def main():
     print("\nStep 4: Creating vector store...")
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     vectorstore = FAISS.from_documents(chunks, embeddings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
     print("Vector store created!")
 
     # Create RAG chain

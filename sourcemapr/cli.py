@@ -110,6 +110,14 @@ def main():
     # Version command
     subparsers.add_parser('version', help='Show version information')
 
+    # Demo command
+    demo_parser = subparsers.add_parser('demo', help='Seed database with demo data for showcasing')
+    demo_parser.add_argument(
+        '--clear',
+        action='store_true',
+        help='Clear existing data before seeding demo'
+    )
+
     args = parser.parse_args()
 
     if args.command == 'server':
@@ -127,6 +135,8 @@ def main():
     elif args.command == 'version':
         from sourcemapr import __version__
         print(f"SourcemapR v{__version__}")
+    elif args.command == 'demo':
+        cmd_demo(args.clear)
     else:
         parser.print_help()
         sys.exit(1)
@@ -293,6 +303,132 @@ def cmd_init(reset: bool = False):
     print(f"Initializing database at {db.DB_PATH}...")
     db.init_db()
     print("Database initialized successfully")
+
+
+def cmd_demo(clear_first: bool = False):
+    """Seed database with demo data for showcasing the dashboard."""
+    from sourcemapr.server import database as db
+
+    if clear_first:
+        print("Clearing existing data...")
+        db.clear_all_data()
+
+    print("Seeding demo data...")
+    _seed_demo_data()
+    print("\nDemo data ready!")
+    print("Start server with: sourcemapr server")
+    print("Then visit: http://localhost:5000")
+
+
+def _seed_demo_data():
+    """Internal function to seed demo data."""
+    import json
+    import uuid
+    from datetime import datetime, timedelta
+    from sourcemapr.server.database import (
+        init_db,
+        get_or_create_experiment_by_name,
+        store_document,
+        store_parsed,
+        store_chunk,
+        store_retrieval,
+        store_llm_call,
+    )
+
+    def generate_id():
+        return str(uuid.uuid4())[:8]
+
+    init_db()
+
+    experiment_name = "Demo - Attention Paper"
+    experiment_id = get_or_create_experiment_by_name(experiment_name, ["llamaindex"])
+    print(f"  Created experiment: {experiment_name}")
+
+    trace_id = generate_id()
+    base_time = datetime.now()
+
+    # Sample documents
+    documents = [
+        {"doc_id": f"doc_{generate_id()}", "filename": "attention_paper.pdf",
+         "file_path": "./data/attention_paper.pdf", "num_pages": 15, "text_length": 45000},
+        {"doc_id": f"doc_{generate_id()}", "filename": "llama2_paper.pdf",
+         "file_path": "./data/llama2_paper.pdf", "num_pages": 77, "text_length": 180000},
+        {"doc_id": f"doc_{generate_id()}", "filename": "rag_paper.pdf",
+         "file_path": "./data/rag_paper.pdf", "num_pages": 12, "text_length": 32000},
+    ]
+
+    # Sample chunks with realistic text
+    chunk_texts = {
+        "attention_paper.pdf": [
+            ("The dominant sequence transduction models are based on complex recurrent or convolutional neural networks that include an encoder and a decoder. The best performing models also connect the encoder and decoder through an attention mechanism.", 1),
+            ("We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely.", 1),
+            ("An attention function can be described as mapping a query and a set of key-value pairs to an output, where the query, keys, values, and output are all vectors.", 3),
+            ("We call our particular attention 'Scaled Dot-Product Attention'. The input consists of queries and keys of dimension dk, and values of dimension dv.", 3),
+            ("Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions.", 4),
+        ],
+        "llama2_paper.pdf": [
+            ("We develop and release Llama 2, a collection of pretrained and fine-tuned large language models ranging in scale from 7 billion to 70 billion parameters.", 1),
+            ("Llama 2 is pretrained using an optimized auto-regressive transformer with grouped-query attention (GQA) and a context length of 4096 tokens.", 3),
+            ("To create Llama 2-Chat, we use Reinforcement Learning from Human Feedback (RLHF) to align the model with human preferences.", 5),
+        ],
+        "rag_paper.pdf": [
+            ("We explore a general-purpose fine-tuning recipe for retrieval-augmented generation (RAG) — models which combine pre-trained parametric and non-parametric memory.", 1),
+            ("RAG models combine the parametric memory of a pre-trained seq2seq transformer with a non-parametric memory via a neural retriever.", 2),
+        ],
+    }
+
+    all_chunks = []
+    for doc in documents:
+        store_document({"data": {**doc, "trace_id": trace_id, "experiment_name": experiment_name, "frameworks": ["llamaindex"]}})
+
+        chunks = chunk_texts.get(doc["filename"], [])
+        parsed_text = "\n\n".join([c[0] for c in chunks])
+        store_parsed({"data": {"doc_id": doc["doc_id"], "filename": doc["filename"], "text": parsed_text, "text_length": len(parsed_text), "trace_id": trace_id}})
+
+        char_idx = 0
+        for i, (text, page) in enumerate(chunks):
+            chunk_id = f"chunk_{generate_id()}"
+            chunk_data = {
+                "chunk_id": chunk_id, "doc_id": doc["doc_id"], "index": i, "text": text,
+                "text_length": len(text), "page_number": page, "start_char_idx": char_idx,
+                "end_char_idx": char_idx + len(text), "metadata": {"source": doc["filename"]},
+                "trace_id": trace_id, "experiment_name": experiment_name, "frameworks": ["llamaindex"],
+            }
+            store_chunk({"data": chunk_data})
+            all_chunks.append({**chunk_data, "filename": doc["filename"]})
+            char_idx += len(text) + 2
+
+    print(f"  Added {len(documents)} documents, {len(all_chunks)} chunks")
+
+    # Sample queries
+    queries = [
+        ("What is the attention mechanism in transformers?", [0, 2, 3],
+         "The attention mechanism maps a query and key-value pairs to an output. The Transformer uses 'Scaled Dot-Product Attention' where dot products are computed between queries and keys, scaled, and passed through softmax."),
+        ("How was Llama 2 trained?", [5, 6, 7],
+         "Llama 2 was pretrained using an optimized auto-regressive transformer with grouped-query attention and 4096 token context. It was then fine-tuned using RLHF to create Llama 2-Chat."),
+        ("What is retrieval augmented generation?", [8, 9],
+         "RAG combines pre-trained parametric memory (seq2seq transformer) with non-parametric memory via a neural retriever, allowing models to access external knowledge during generation."),
+    ]
+
+    for i, (query, chunk_indices, response) in enumerate(queries):
+        results = [{"chunk_id": all_chunks[j]["chunk_id"], "text": all_chunks[j]["text"],
+                    "score": round(0.92 - (k * 0.05), 2), "page": all_chunks[j]["page_number"],
+                    "source": all_chunks[j]["filename"]} for k, j in enumerate(chunk_indices) if j < len(all_chunks)]
+
+        store_retrieval({"data": {"query": query, "results": results, "num_results": len(results),
+                                  "duration_ms": 150 + i * 20, "trace_id": trace_id,
+                                  "experiment_name": experiment_name, "frameworks": ["llamaindex"]}})
+
+        context = "\n".join([r["text"] for r in results])
+        messages = [{"role": "system", "content": "Answer based on the provided context."},
+                    {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}]
+        store_llm_call({"data": {"model": "gpt-4o-mini", "input_type": "messages", "messages": messages,
+                                 "response": response, "prompt_tokens": 200 + i * 50, "completion_tokens": 80,
+                                 "total_tokens": 280 + i * 50, "temperature": 0.7, "duration_ms": 800 + i * 100,
+                                 "status": "success", "trace_id": trace_id, "experiment_name": experiment_name,
+                                 "frameworks": ["llamaindex"]}})
+
+    print(f"  Added {len(queries)} queries with retrievals and LLM calls")
 
 
 if __name__ == '__main__':

@@ -22,19 +22,25 @@ from sourcemapr.store import TraceStore
 # CALLBACK HANDLER
 # ============================================================================
 
-def _create_callback_handler(store: TraceStore):
-    """Create LangChain callback handler."""
+def _create_callback_handler(store: TraceStore, skip_llm_logging: bool = False):
+    """Create LangChain callback handler.
+
+    Args:
+        store: TraceStore instance
+        skip_llm_logging: If True, skip LLM call logging (use when OpenAI provider is also active)
+    """
     from langchain_core.callbacks import BaseCallbackHandler
     from langchain_core.outputs import LLMResult
-    
+
     class SourcemapRLangChainHandler(BaseCallbackHandler):
         """Callback handler for LangChain LLM and retrieval events."""
-        
+
         def __init__(self):
             super().__init__()
             self.store = store
             self._llm_starts: Dict[str, Dict] = {}
             self._retriever_starts: Dict[str, Dict] = {}
+            self._skip_llm_logging = skip_llm_logging
         
         @property
         def always_verbose(self) -> bool:
@@ -50,6 +56,8 @@ def _create_callback_handler(store: TraceStore):
             **kwargs: Any,
         ) -> None:
             """Called when LLM starts."""
+            if self._skip_llm_logging:
+                return
             model = serialized.get('name', serialized.get('id', ['unknown'])[-1])
             self._llm_starts[str(run_id)] = {
                 "start_time": time.time(),
@@ -68,6 +76,8 @@ def _create_callback_handler(store: TraceStore):
             **kwargs: Any,
         ) -> None:
             """Called when LLM finishes."""
+            if self._skip_llm_logging:
+                return
             run_id_str = str(run_id)
             llm_data = self._llm_starts.pop(run_id_str, {
                 "start_time": time.time(),
@@ -111,6 +121,8 @@ def _create_callback_handler(store: TraceStore):
             **kwargs: Any,
         ) -> None:
             """Called when LLM errors."""
+            if self._skip_llm_logging:
+                return
             run_id_str = str(run_id)
             llm_data = self._llm_starts.pop(run_id_str, {
                 "start_time": time.time(),
@@ -136,6 +148,8 @@ def _create_callback_handler(store: TraceStore):
             **kwargs: Any,
         ) -> None:
             """Called when chat model starts."""
+            if self._skip_llm_logging:
+                return
             model = serialized.get('name', serialized.get('id', ['unknown'])[-1])
 
             # Format messages
@@ -395,6 +409,7 @@ class LangChainProvider(BaseProvider):
             self._setup_callbacks()
             self._patch_document_loaders()
             self._patch_text_splitters()
+            self._patch_vector_store_retriever()
             self._instrumented = True
             print("[SourcemapR] LangChain provider enabled")
             return True
@@ -412,7 +427,19 @@ class LangChainProvider(BaseProvider):
     
     def _setup_callbacks(self):
         """Set up LangChain callback handler."""
-        self._callback_handler = _create_callback_handler(self.store)
+        # Skip LLM logging if OpenAI provider is available (to avoid duplicates)
+        skip_llm = self._check_openai_available()
+        self._callback_handler = _create_callback_handler(self.store, skip_llm_logging=skip_llm)
+        if skip_llm:
+            print("[SourcemapR] LangChain: Skipping LLM logging (OpenAI provider active)")
+
+    def _check_openai_available(self) -> bool:
+        """Check if OpenAI is available and will be instrumented."""
+        try:
+            import openai
+            return hasattr(openai, 'OpenAI')
+        except ImportError:
+            return False
     
     # ========================================================================
     # MONKEY PATCHING
@@ -442,6 +469,48 @@ class LangChainProvider(BaseProvider):
         # Patch base loader to catch all others (including HTML loaders)
         patcher.patch_base_loader()
     
+    def _patch_vector_store_retriever(self):
+        """Patch VectorStoreRetriever to inject scores into document metadata."""
+        try:
+            from langchain_core.vectorstores import VectorStoreRetriever
+
+            if hasattr(VectorStoreRetriever._get_relevant_documents, '_sourcemapr_patched'):
+                return
+
+            original_get_docs = VectorStoreRetriever._get_relevant_documents
+
+            def patched_get_docs(self_retriever, query, *, run_manager=None):
+                # Try to get documents with scores
+                vectorstore = self_retriever.vectorstore
+                k = self_retriever.search_kwargs.get('k', 4)
+
+                try:
+                    # Use similarity_search_with_score if available
+                    if hasattr(vectorstore, 'similarity_search_with_score'):
+                        docs_and_scores = vectorstore.similarity_search_with_score(
+                            query, k=k, **{kk: vv for kk, vv in self_retriever.search_kwargs.items() if kk != 'k'}
+                        )
+                        # Inject scores into metadata
+                        docs = []
+                        for doc, score in docs_and_scores:
+                            if not doc.metadata:
+                                doc.metadata = {}
+                            doc.metadata['score'] = float(score)
+                            docs.append(doc)
+                        return docs
+                except Exception:
+                    pass
+
+                # Fallback to original method
+                return original_get_docs(self_retriever, query, run_manager=run_manager)
+
+            patched_get_docs._sourcemapr_patched = True
+            VectorStoreRetriever._get_relevant_documents = patched_get_docs
+            self._original_handlers['VectorStoreRetriever._get_relevant_documents'] = original_get_docs
+            print("[SourcemapR] Patched VectorStoreRetriever (scores will be captured)")
+        except ImportError:
+            pass
+
     def _patch_text_splitters(self):
         """Patch text splitters to track chunking."""
         try:

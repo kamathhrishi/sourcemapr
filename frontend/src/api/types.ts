@@ -53,6 +53,7 @@ export interface RetrievalResult {
 export interface Retrieval {
   id: number
   trace_id: string | null
+  retrieval_id: string | null
   query: string
   results: RetrievalResult[]
   response: string | null
@@ -66,6 +67,7 @@ export interface Retrieval {
 export interface LLMCall {
   id: number
   trace_id: string | null
+  retrieval_id: string | null
   model: string
   prompt: string | null
   input_type: string | null

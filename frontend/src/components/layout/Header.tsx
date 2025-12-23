@@ -1,11 +1,17 @@
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, Trash2, Moon, Sun, Layers, ChevronLeft } from 'lucide-react'
+import { RefreshCw, Trash2, Moon, Sun, LayoutGrid, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { FrameworkBadge } from '@/components/common/FrameworkBadge'
 import { useAppStore } from '@/store'
 import { useClearData } from '@/hooks/useApi'
 import type { Experiment } from '@/api/types'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface HeaderProps {
   experimentId: number | null
@@ -16,7 +22,7 @@ interface HeaderProps {
 
 export function Header({ experimentId, experiments, framework, onRefresh }: HeaderProps) {
   const navigate = useNavigate()
-  const { isDarkMode, toggleDarkMode } = useAppStore()
+  const { isDarkMode, toggleDarkMode, setExperiment } = useAppStore()
   const clearData = useClearData()
 
   const experiment = experiments.find((e) => e.id === experimentId)
@@ -29,68 +35,109 @@ export function Header({ experimentId, experiments, framework, onRefresh }: Head
     }
   }
 
+  const handleExperimentSelect = (expId: number | null) => {
+    setExperiment(expId)
+    if (expId === null) {
+      navigate('/experiment/all')
+    } else {
+      navigate(`/experiment/${expId}`)
+    }
+  }
+
   return (
-    <header className="h-16 border-b border-apple-border bg-apple-card flex items-center px-6 gap-4">
-      {/* Back Button */}
+    <header
+      className="h-11 flex items-center px-3 gap-2"
+      style={{
+        background: 'var(--surface)',
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
+      {/* Back to Experiments Button */}
       <Button
         variant="ghost"
         size="sm"
         onClick={() => navigate('/')}
-        className="gap-1.5 text-apple-secondary hover:text-apple-text"
+        className="h-7 w-7 p-0"
+        style={{ color: 'var(--text-secondary)' }}
+        title="Back to Experiments"
       >
-        <ChevronLeft className="w-4 h-4" />
-        Experiments
+        <LayoutGrid className="w-4 h-4" />
       </Button>
 
-      <div className="w-px h-6 bg-apple-border" />
+      <div className="w-px h-4" style={{ background: 'var(--border)' }} />
 
-      {/* Experiment Info */}
-      <div className="flex items-center gap-4 flex-1 min-w-0">
-        <div className="w-10 h-10 rounded-lg bg-apple-tertiary flex items-center justify-center">
-          <Layers className="w-5 h-5 text-apple-secondary" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="font-semibold text-lg truncate">{experimentName}</h1>
-            {experimentId === null && (
-              <Badge variant="secondary" className="shrink-0 text-xs">
-                Global View
-              </Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-2 text-sm text-apple-secondary">
-            {framework ? (
-              <FrameworkBadge framework={framework} />
-            ) : (
-              <span>Viewing all framework traces</span>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Experiment Dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 gap-1.5 font-medium"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            <span className="text-sm truncate max-w-[200px]">{experimentName}</span>
+            {framework && <FrameworkBadge framework={framework} />}
+            <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuItem
+            onClick={() => handleExperimentSelect(null)}
+            className={experimentId === null ? 'bg-accent/10' : ''}
+          >
+            <span className="font-medium">All Experiments</span>
+          </DropdownMenuItem>
+          {experiments.length > 0 && <DropdownMenuSeparator />}
+          {experiments.map((exp) => (
+            <DropdownMenuItem
+              key={exp.id}
+              onClick={() => handleExperimentSelect(exp.id)}
+              className={experimentId === exp.id ? 'bg-accent/10' : ''}
+            >
+              <div className="flex items-center justify-between w-full">
+                <span className="truncate">{exp.name}</span>
+                {exp.framework && (
+                  <span className="text-xs text-muted-foreground ml-2">{exp.framework}</span>
+                )}
+              </div>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <div className="flex-1" />
 
       {/* Actions */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-1">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={onRefresh}
-          className="gap-2"
+          className="h-7 px-2 text-xs gap-1"
+          style={{ color: 'var(--text-secondary)' }}
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-3.5 h-3.5" />
           Refresh
         </Button>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={handleClear}
-          className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+          className="h-7 px-2 text-xs gap-1"
+          style={{ color: 'var(--text-muted)' }}
         >
-          <Trash2 className="w-4 h-4" />
-          Clear Data
+          <Trash2 className="w-3.5 h-3.5" />
+          Clear
         </Button>
-        <div className="w-px h-6 bg-apple-border mx-1" />
-        <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
-          {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        <div className="w-px h-4 mx-0.5" style={{ background: 'var(--border)' }} />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleDarkMode}
+          className="h-7 w-7"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          {isDarkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
         </Button>
       </div>
     </header>

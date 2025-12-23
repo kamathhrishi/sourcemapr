@@ -26,7 +26,7 @@ def main():
     # THIS IS ALL YOU NEED TO ADD OBSERVABILITY!
     # =====================================================
     from sourcemapr import init_tracing, stop_tracing
-    init_tracing(endpoint="http://localhost:5000")
+    init_tracing(endpoint="http://localhost:5000", experiment="llamaindex-demo")
     # =====================================================
 
     from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
@@ -60,7 +60,7 @@ def main():
     print("Running queries...")
     print("-" * 50)
 
-    query_engine = index.as_query_engine(similarity_top_k=3)
+    query_engine = index.as_query_engine(similarity_top_k=50)
 
     queries = [
         "What is the attention mechanism?",

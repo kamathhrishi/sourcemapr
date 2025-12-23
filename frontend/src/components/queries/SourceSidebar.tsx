@@ -1,4 +1,7 @@
 import { useMemo, useEffect, useRef, useCallback, useState } from 'react'
+import { Document, Page, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+import 'react-pdf/dist/Page/TextLayer.css'
 import {
   X,
   FileText,
@@ -6,6 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Highlighter,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -15,6 +20,9 @@ import { useParsedDocument } from '@/hooks/useApi'
 import { useAppStore } from '@/store'
 import { api } from '@/api/client'
 import type { DashboardData } from '@/api/types'
+
+// Configure PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
 interface SourceSidebarProps {
   data: DashboardData
@@ -35,7 +43,11 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
 
   const parsedContainerRef = useRef<HTMLPreElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const pdfContainerRef = useRef<HTMLDivElement>(null)
   const [iframeLoaded, setIframeLoaded] = useState(false)
+  const [, setPdfNumPages] = useState(0)
+  const [pdfScale, setPdfScale] = useState(0.8)
+  const [pdfLoading, setPdfLoading] = useState(true)
 
   const document = sidebarDocId ? data.documents[sidebarDocId] : null
   const { data: parsedData, isLoading } = useParsedDocument(sidebarDocId)
@@ -167,6 +179,75 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
     setIframeLoaded(true)
   }, [])
 
+  // PDF handlers
+  const onPdfLoadSuccess = ({ numPages }: { numPages: number }) => {
+    setPdfNumPages(numPages)
+    setPdfLoading(false)
+  }
+
+  const onPdfLoadError = (error: Error) => {
+    console.error('PDF load error:', error)
+    setPdfLoading(false)
+  }
+
+  // Highlight text in PDF text layer
+  const highlightPdfText = useCallback(() => {
+    if (!highlightChunkText || !pdfContainerRef.current) return
+
+    // Remove previous highlights
+    const oldHighlights = pdfContainerRef.current.querySelectorAll('.pdf-chunk-highlight')
+    oldHighlights.forEach(el => el.classList.remove('pdf-chunk-highlight'))
+
+    // Find text layer elements
+    const textLayers = pdfContainerRef.current.querySelectorAll('.react-pdf__Page__textContent')
+    if (!textLayers.length) return
+
+    const searchText = highlightChunkText.toLowerCase().replace(/\s+/g, ' ').trim()
+    const searchWords = searchText.split(' ').filter(w => w.length > 3).slice(0, 10)
+
+    textLayers.forEach((textLayer) => {
+      const spans = textLayer.querySelectorAll('span')
+      let fullText = ''
+      const spanRanges: { span: Element; start: number; end: number }[] = []
+
+      spans.forEach((span) => {
+        const text = span.textContent || ''
+        spanRanges.push({ span, start: fullText.length, end: fullText.length + text.length })
+        fullText += text
+      })
+
+      const fullTextLower = fullText.toLowerCase()
+
+      for (const word of searchWords) {
+        const wordIdx = fullTextLower.indexOf(word)
+        if (wordIdx !== -1) {
+          const matchStart = wordIdx
+          const matchEnd = Math.min(wordIdx + searchText.length, fullText.length)
+
+          spanRanges.forEach(({ span, start, end }) => {
+            if (start < matchEnd && end > matchStart) {
+              span.classList.add('pdf-chunk-highlight')
+            }
+          })
+
+          const firstHighlight = textLayer.querySelector('.pdf-chunk-highlight')
+          if (firstHighlight) {
+            firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+          break
+        }
+      }
+    })
+  }, [highlightChunkText])
+
+  // Apply PDF highlighting after page renders
+  useEffect(() => {
+    if (highlightChunkText && !pdfLoading && isPdf && sidebarViewMode === 'source') {
+      const timer = setTimeout(highlightPdfText, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [highlightChunkText, pdfLoading, isPdf, sidebarPage, sidebarViewMode, highlightPdfText])
+
   const handleOpenFullView = () => {
     if (!sidebarDocId) return
     const basePath = currentExperimentId
@@ -259,6 +340,37 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
         )}
       </div>
 
+      {/* Custom styles for PDF highlighting */}
+      <style>{`
+        .react-pdf__Page {
+          position: relative;
+        }
+        .react-pdf__Page__canvas {
+          display: block;
+        }
+        .react-pdf__Page__textContent {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          overflow: hidden;
+          line-height: 1;
+          pointer-events: none;
+        }
+        .react-pdf__Page__textContent span {
+          position: absolute;
+          color: transparent;
+          white-space: pre;
+          transform-origin: 0 0;
+        }
+        .pdf-chunk-highlight {
+          background-color: rgba(251, 191, 36, 0.35) !important;
+          border-radius: 2px;
+          border-bottom: 2px solid #f59e0b;
+        }
+      `}</style>
+
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {sidebarViewMode === 'parsed' ? (
@@ -276,13 +388,37 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
             )}
           </ScrollArea>
         ) : (
-          <div className="h-full bg-gray-100">
+          <div className="h-full bg-gray-100 overflow-auto" ref={pdfContainerRef}>
             {isPdf && fileUrl ? (
-              <iframe
-                src={`${fileUrl}#page=${safePage}`}
-                className="w-full h-full border-0"
-                title={document.filename}
-              />
+              <div className="flex flex-col items-center p-2">
+                <div className="flex items-center gap-1 mb-2">
+                  <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => setPdfScale(Math.max(0.4, pdfScale - 0.1))}>
+                    <ZoomOut className="w-3 h-3" />
+                  </Button>
+                  <span className="text-xs w-10 text-center">{Math.round(pdfScale * 100)}%</span>
+                  <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => setPdfScale(Math.min(2, pdfScale + 0.1))}>
+                    <ZoomIn className="w-3 h-3" />
+                  </Button>
+                </div>
+                <Document
+                  file={fileUrl}
+                  onLoadSuccess={onPdfLoadSuccess}
+                  onLoadError={onPdfLoadError}
+                  loading={
+                    <div className="flex items-center justify-center h-32 text-apple-secondary text-sm">
+                      Loading PDF...
+                    </div>
+                  }
+                >
+                  <Page
+                    pageNumber={safePage}
+                    scale={pdfScale}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    className="shadow-lg"
+                  />
+                </Document>
+              </div>
             ) : isHtml && fileUrl ? (
               <iframe
                 ref={iframeRef}

@@ -1,20 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, ChevronLeft, ChevronRight, Clock, Layers, Cpu } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { useAppStore } from '@/store'
-import { formatLatency, formatTime, getLatencyColor } from '@/lib/utils'
+import { formatLatency, formatTime } from '@/lib/utils'
 import type { DashboardData } from '@/api/types'
 
 interface QueryListProps {
@@ -60,144 +50,207 @@ export function QueryList({ data }: QueryListProps) {
     navigate(`${basePath}/queries/${queryId}`)
   }
 
-  return (
-    <div className="h-full overflow-auto p-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Search className="w-4 h-4" />
-              Queries ({queries.length})
-            </CardTitle>
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-apple-secondary" />
-              <Input
-                placeholder="Search queries..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value)
-                  setQueriesPage(1)
-                }}
-                className="pl-9"
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {paginatedQueries.length > 0 ? (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Query</TableHead>
-                    <TableHead className="w-24 text-center">Chunks</TableHead>
-                    <TableHead className="w-32">Model</TableHead>
-                    <TableHead className="w-28 text-right">Latency</TableHead>
-                    <TableHead className="w-24 text-right">Time</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedQueries.map((query) => (
-                    <TableRow
-                      key={query.id}
-                      className="cursor-pointer"
-                      onClick={() => handleQueryClick(query.id)}
-                    >
-                      <TableCell>
-                        <div className="max-w-md truncate font-medium">
-                          {query.query}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="secondary" className="gap-1">
-                          <Layers className="w-3 h-3" />
-                          {query.num_results}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {query.llmCall ? (
-                          <div className="flex items-center gap-1.5">
-                            <Cpu className="w-3 h-3 text-apple-secondary" />
-                            <span className="text-sm">{query.llmCall.model}</span>
-                          </div>
-                        ) : (
-                          <span className="text-apple-secondary text-sm">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <span className={`text-sm ${getLatencyColor(query.duration_ms)}`}>
-                            {formatLatency(query.duration_ms)}
-                          </span>
-                          <div className="w-16 h-1.5 bg-apple-tertiary rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                query.duration_ms < 500
-                                  ? 'bg-apple-green'
-                                  : query.duration_ms < 2000
-                                  ? 'bg-apple-orange'
-                                  : 'bg-apple-red'
-                              }`}
-                              style={{
-                                width: `${Math.min(100, (query.duration_ms / 5000) * 100)}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1 text-apple-secondary">
-                          <Clock className="w-3 h-3" />
-                          <span className="text-xs">{formatTime(query.timestamp)}</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+  const getLatencyColor = (ms: number) => {
+    if (ms < 500) return 'var(--success)'
+    if (ms < 2000) return 'var(--warning)'
+    return 'var(--error)'
+  }
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-apple-border">
-                  <div className="text-sm text-apple-secondary">
-                    Showing {(queriesPage - 1) * PAGE_SIZE + 1}-
-                    {Math.min(queriesPage * PAGE_SIZE, filteredQueries.length)} of{' '}
-                    {filteredQueries.length}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setQueriesPage(queriesPage - 1)}
-                      disabled={queriesPage === 1}
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </Button>
-                    <span className="text-sm">
-                      Page {queriesPage} of {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setQueriesPage(queriesPage + 1)}
-                      disabled={queriesPage === totalPages}
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </Button>
-                  </div>
+  return (
+    <div className="h-full overflow-auto p-6" style={{ background: 'var(--background)' }}>
+      <div className="console-card">
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: '1px solid var(--border)' }}
+        >
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              Queries
+            </span>
+            <span
+              className="text-xs px-1.5 py-0.5 rounded"
+              style={{ background: 'var(--background-subtle)', color: 'var(--text-muted)' }}
+            >
+              {queries.length}
+            </span>
+          </div>
+          <div className="relative">
+            <Search
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5"
+              style={{ color: 'var(--text-muted)' }}
+            />
+            <Input
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value)
+                setQueriesPage(1)
+              }}
+              className="pl-8 h-7 w-48 text-xs"
+              style={{ background: 'var(--background)', borderColor: 'var(--border)' }}
+            />
+          </div>
+        </div>
+
+        {/* Table */}
+        {paginatedQueries.length > 0 ? (
+          <>
+            <table className="w-full">
+              <thead>
+                <tr style={{ background: 'var(--background-subtle)' }}>
+                  <th
+                    className="text-left px-4 py-2 text-[11px] font-medium uppercase tracking-wider"
+                    style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}
+                  >
+                    Query
+                  </th>
+                  <th
+                    className="text-center px-4 py-2 text-[11px] font-medium uppercase tracking-wider w-20"
+                    style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}
+                  >
+                    Chunks
+                  </th>
+                  <th
+                    className="text-left px-4 py-2 text-[11px] font-medium uppercase tracking-wider w-32"
+                    style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}
+                  >
+                    Model
+                  </th>
+                  <th
+                    className="text-right px-4 py-2 text-[11px] font-medium uppercase tracking-wider w-24"
+                    style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}
+                  >
+                    Latency
+                  </th>
+                  <th
+                    className="text-right px-4 py-2 text-[11px] font-medium uppercase tracking-wider w-24"
+                    style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}
+                  >
+                    Time
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedQueries.map((query, idx) => (
+                  <tr
+                    key={query.id}
+                    className="cursor-pointer transition-colors"
+                    style={{
+                      borderBottom: idx < paginatedQueries.length - 1 ? '1px solid var(--border)' : 'none',
+                    }}
+                    onClick={() => handleQueryClick(query.id)}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-8 h-8 rounded flex items-center justify-center shrink-0"
+                          style={{ background: 'var(--background-subtle)' }}
+                        >
+                          <Search className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+                        </div>
+                        <span
+                          className="text-sm truncate max-w-md"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          {query.query}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span
+                        className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded"
+                        style={{ background: 'var(--background-subtle)', color: 'var(--text-secondary)' }}
+                      >
+                        <Layers className="w-3 h-3" />
+                        {query.num_results}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {query.llmCall ? (
+                        <div className="flex items-center gap-1.5">
+                          <Cpu className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                          <span className="text-xs mono" style={{ color: 'var(--text-secondary)' }}>
+                            {query.llmCall.model}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span
+                        className="text-xs mono font-medium"
+                        style={{ color: getLatencyColor(query.duration_ms) }}
+                      >
+                        {formatLatency(query.duration_ms)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Clock className="w-3 h-3" style={{ color: 'var(--text-muted)' }} />
+                        <span className="text-xs mono" style={{ color: 'var(--text-muted)' }}>
+                          {formatTime(query.timestamp)}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ borderTop: '1px solid var(--border)' }}
+              >
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {(queriesPage - 1) * PAGE_SIZE + 1}–{Math.min(queriesPage * PAGE_SIZE, filteredQueries.length)} of {filteredQueries.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setQueriesPage(queriesPage - 1)}
+                    disabled={queriesPage === 1}
+                    className="h-7 w-7"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </Button>
+                  <span className="text-xs px-2" style={{ color: 'var(--text-secondary)' }}>
+                    {queriesPage} / {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setQueriesPage(queriesPage + 1)}
+                    disabled={queriesPage === totalPages}
+                    className="h-7 w-7"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
-              )}
-            </>
-          ) : (
-            <div className="text-center py-12">
-              <Search className="w-12 h-12 mx-auto mb-4 text-apple-secondary" />
-              <p className="text-apple-secondary">
-                {searchTerm ? 'No queries match your search' : 'No queries yet'}
-              </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="py-12 text-center">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center mx-auto mb-3"
+              style={{ background: 'var(--background-subtle)' }}
+            >
+              <Search className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              {searchTerm ? 'No queries match your search' : 'No queries yet'}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

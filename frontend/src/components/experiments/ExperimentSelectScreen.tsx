@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus,
-  Beaker,
   FileText,
   Search,
   Cpu,
@@ -11,10 +10,10 @@ import {
   RefreshCw,
   Database,
   Layers,
-  Activity,
   Trash2,
   Sun,
-  Moon
+  Moon,
+  Zap
 } from 'lucide-react'
 import { useExperiments, useCreateExperiment, useDeleteExperiment } from '@/hooks/useApi'
 import { Button } from '@/components/ui/button'
@@ -87,28 +86,34 @@ export function ExperimentSelectScreen() {
   }), { docs: 0, queries: 0, llm: 0 }) || { docs: 0, queries: 0, llm: 0 }
 
   return (
-    <div className="min-h-screen bg-apple-bg">
+    <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       {/* Header */}
-      <header className="border-b border-apple-border bg-apple-card sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-sm">
-              <Beaker className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold">SourcemapR</h1>
-              <p className="text-xs text-apple-secondary">RAG Observability Platform</p>
-            </div>
-          </div>
+      <header className="border-b sticky top-0 z-10" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent)' }}>
+              <Zap className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-base font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+              SourcemapR
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleDarkMode}
+              className="h-8 w-8"
+            >
               {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
             <Button
               onClick={() => setShowCreateModal(true)}
-              className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-sm"
+              size="sm"
+              className="h-8 text-xs font-medium"
+              style={{ background: 'var(--accent)', color: 'white' }}
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
               New Experiment
             </Button>
           </div>
@@ -116,166 +121,162 @@ export function ExperimentSelectScreen() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-apple-card rounded-xl border border-apple-border p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{experiments?.length || 0}</div>
-                <div className="text-xs text-apple-secondary">Experiments</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-apple-card rounded-xl border border-apple-border p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <FileText className="w-5 h-5 text-green-600 dark:text-green-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{totals.docs}</div>
-                <div className="text-xs text-apple-secondary">Documents</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-apple-card rounded-xl border border-apple-border p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <Search className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{totals.queries}</div>
-                <div className="text-xs text-apple-secondary">Queries</div>
+      <main className="max-w-6xl mx-auto px-6 py-8">
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4 mb-8">
+          {[
+            { label: 'Experiments', value: experiments?.length || 0, icon: Layers },
+            { label: 'Documents', value: totals.docs, icon: FileText },
+            { label: 'Queries', value: totals.queries, icon: Search },
+            { label: 'LLM Calls', value: totals.llm, icon: Cpu },
+          ].map(({ label, value, icon: Icon }) => (
+            <div key={label} className="console-card p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="stat-value">{value}</div>
+                  <div className="stat-label">{label}</div>
+                </div>
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center"
+                  style={{ background: 'var(--background-subtle)' }}
+                >
+                  <Icon className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
+                </div>
               </div>
             </div>
-          </div>
-          <div className="bg-apple-card rounded-xl border border-apple-border p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                <Cpu className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{totals.llm}</div>
-                <div className="text-xs text-apple-secondary">LLM Calls</div>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* Experiments Section */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-lg font-semibold">Experiments</h2>
-            <p className="text-sm text-apple-secondary">Select an experiment to explore its RAG pipeline traces</p>
-          </div>
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+            Experiments
+          </h2>
+          <div className="flex items-center gap-2">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-apple-secondary" />
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                style={{ color: 'var(--text-muted)' }}
+              />
               <Input
                 type="text"
-                placeholder="Search experiments..."
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 w-64 bg-apple-card"
+                className="pl-9 w-56 h-8 text-sm"
+                style={{
+                  background: 'var(--surface)',
+                  borderColor: 'var(--border)',
+                }}
               />
             </div>
-            <Button variant="outline" size="icon" onClick={() => refetch()}>
-              <RefreshCw className="w-4 h-4" />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => refetch()}
+              className="h-8 w-8"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
             </Button>
           </div>
         </div>
 
         {/* Experiments List */}
-        <div className="bg-apple-card rounded-xl border border-apple-border overflow-hidden">
+        <div className="console-card overflow-hidden">
           {/* Global View Row */}
           <div
             onClick={() => handleSelectExperiment('all')}
-            className="flex items-center gap-4 px-5 py-4 border-b border-apple-border hover:bg-apple-tertiary/50 cursor-pointer transition-colors group"
+            className="flex items-center gap-4 px-4 py-3 cursor-pointer transition-colors group"
+            style={{ borderBottom: '1px solid var(--border)' }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center">
-              <Layers className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+            <div
+              className="w-9 h-9 rounded-lg flex items-center justify-center"
+              style={{ background: 'var(--background-subtle)' }}
+            >
+              <Layers className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-semibold">All Experiments</span>
+                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                  All Experiments
+                </span>
                 <Badge variant="secondary" className="text-xs">Global</Badge>
               </div>
-              <div className="text-sm text-apple-secondary">View aggregated traces across all experiments</div>
-            </div>
-            <div className="flex items-center gap-6 text-sm text-apple-secondary">
-              <div className="flex items-center gap-1.5">
-                <FileText className="w-4 h-4" />
-                <span>{totals.docs}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Search className="w-4 h-4" />
-                <span>{totals.queries}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Cpu className="w-4 h-4" />
-                <span>{totals.llm}</span>
+              <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Aggregated view across all experiments
               </div>
             </div>
-            <ChevronRight className="w-5 h-5 text-apple-secondary opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="flex items-center gap-6 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <span className="mono">{totals.docs} docs</span>
+              <span className="mono">{totals.queries} queries</span>
+              <span className="mono">{totals.llm} calls</span>
+            </div>
+            <ChevronRight
+              className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ color: 'var(--text-muted)' }}
+            />
           </div>
 
           {/* Experiment Rows */}
           {isLoading ? (
-            <div className="p-5 space-y-4">
+            <div className="p-4 space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex items-center gap-4">
-                  <Skeleton className="h-11 w-11 rounded-xl" />
+                  <Skeleton className="h-9 w-9 rounded-lg" />
                   <div className="flex-1 space-y-2">
-                    <Skeleton className="h-5 w-48" />
-                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-32" />
                   </div>
                 </div>
               ))}
             </div>
           ) : error ? (
             <div className="p-8 text-center">
-              <p className="text-red-500 mb-2">Failed to load experiments</p>
-              <p className="text-sm text-apple-secondary">{String(error)}</p>
+              <p className="text-sm" style={{ color: 'var(--error)' }}>Failed to load experiments</p>
             </div>
           ) : filteredExperiments && filteredExperiments.length > 0 ? (
             filteredExperiments.map((exp) => (
               <div
                 key={exp.id}
                 onClick={() => handleSelectExperiment(exp.id)}
-                className="flex items-center gap-4 px-5 py-4 border-b border-apple-border last:border-b-0 hover:bg-apple-tertiary/50 cursor-pointer transition-colors group"
+                className="flex items-center gap-4 px-4 py-3 cursor-pointer transition-colors group"
+                style={{ borderBottom: '1px solid var(--border)' }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-100 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/30 flex items-center justify-center">
-                  <Database className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center"
+                  style={{ background: 'var(--accent-subtle)' }}
+                >
+                  <Database className="w-4 h-4" style={{ color: 'var(--accent)' }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold">{exp.name}</span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {exp.name}
+                    </span>
                     {exp.framework && <FrameworkBadge framework={exp.framework} />}
                   </div>
                   {exp.description && (
-                    <div className="text-sm text-apple-secondary truncate">{exp.description}</div>
+                    <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                      {exp.description}
+                    </div>
                   )}
                 </div>
-                <div className="flex items-center gap-6 text-sm">
-                  <div className="flex items-center gap-1.5 text-apple-secondary">
-                    <FileText className="w-4 h-4" />
-                    <span className="font-medium text-apple-text">{exp.doc_count}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-apple-secondary">
-                    <Search className="w-4 h-4" />
-                    <span className="font-medium text-apple-text">{exp.retrieval_count}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-apple-secondary">
-                    <Cpu className="w-4 h-4" />
-                    <span className="font-medium text-apple-text">{exp.llm_count}</span>
-                  </div>
+                <div className="flex items-center gap-6 text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <span className="mono">{exp.doc_count} docs</span>
+                  <span className="mono">{exp.retrieval_count} queries</span>
+                  <span className="mono">{exp.llm_count} calls</span>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
                       <MoreHorizontal className="w-4 h-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -289,28 +290,36 @@ export function ExperimentSelectScreen() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <ChevronRight className="w-5 h-5 text-apple-secondary opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ChevronRight
+                  className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ color: 'var(--text-muted)' }}
+                />
               </div>
             ))
           ) : (
             <div className="p-12 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-apple-tertiary flex items-center justify-center mx-auto mb-4">
-                <Database className="w-8 h-8 text-apple-secondary" />
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-3"
+                style={{ background: 'var(--background-subtle)' }}
+              >
+                <Database className="w-6 h-6" style={{ color: 'var(--text-muted)' }} />
               </div>
-              <h3 className="text-lg font-semibold mb-2">
+              <h3 className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
                 {searchQuery ? 'No experiments found' : 'No experiments yet'}
               </h3>
-              <p className="text-apple-secondary mb-6 max-w-md mx-auto">
+              <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
                 {searchQuery
-                  ? 'Try adjusting your search query'
-                  : 'Create your first experiment to start tracing your RAG pipeline'}
+                  ? 'Try adjusting your search'
+                  : 'Create your first experiment to get started'}
               </p>
               {!searchQuery && (
                 <Button
                   onClick={() => setShowCreateModal(true)}
-                  className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white"
+                  size="sm"
+                  className="h-8 text-xs"
+                  style={{ background: 'var(--accent)', color: 'white' }}
                 >
-                  <Plus className="w-4 h-4 mr-2" />
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
                   Create Experiment
                 </Button>
               )}
@@ -323,26 +332,26 @@ export function ExperimentSelectScreen() {
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Experiment</DialogTitle>
+            <DialogTitle>Create Experiment</DialogTitle>
             <DialogDescription>
-              Create a new experiment to organize and track your RAG pipeline traces.
+              Create a new experiment to organize your RAG pipeline traces.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Experiment Name</Label>
+              <Label htmlFor="name" className="text-sm">Name</Label>
               <Input
                 id="name"
-                placeholder="e.g., Production RAG Pipeline"
+                placeholder="e.g., Production Pipeline"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description (optional)</Label>
+              <Label htmlFor="description" className="text-sm">Description</Label>
               <Input
                 id="description"
-                placeholder="Brief description of this experiment..."
+                placeholder="Optional description..."
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
               />
@@ -355,9 +364,9 @@ export function ExperimentSelectScreen() {
             <Button
               onClick={handleCreateExperiment}
               disabled={!newName.trim()}
-              className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white"
+              style={{ background: 'var(--accent)', color: 'white' }}
             >
-              Create Experiment
+              Create
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -156,6 +156,7 @@ def init_db():
                 num_results INTEGER,
                 duration_ms REAL,
                 trace_id TEXT,
+                retrieval_id TEXT,
                 data TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE SET NULL
@@ -180,6 +181,7 @@ def init_db():
                 status TEXT,
                 error TEXT,
                 trace_id TEXT,
+                retrieval_id TEXT,
                 data TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE SET NULL
@@ -194,6 +196,18 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(trace_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_retrievals_experiment ON retrievals(experiment_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_calls_experiment ON llm_calls(experiment_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_retrievals_retrieval_id ON retrievals(retrieval_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_calls_retrieval_id ON llm_calls(retrieval_id)")
+
+        # Migration: Add retrieval_id column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE retrievals ADD COLUMN retrieval_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE llm_calls ADD COLUMN retrieval_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         conn.commit()
 
@@ -618,8 +632,8 @@ def store_retrieval(data: Dict) -> None:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO retrievals
-            (experiment_id, query, results, num_results, duration_ms, trace_id, data)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (experiment_id, query, results, num_results, duration_ms, trace_id, retrieval_id, data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             experiment_id,
             ret_data.get('query'),
@@ -627,6 +641,7 @@ def store_retrieval(data: Dict) -> None:
             ret_data.get('num_results'),
             ret_data.get('duration_ms'),
             ret_data.get('trace_id'),
+            ret_data.get('retrieval_id'),
             json.dumps(ret_data)
         ))
         conn.commit()
@@ -649,8 +664,8 @@ def store_llm_call(data: Dict) -> None:
             INSERT INTO llm_calls
             (experiment_id, model, duration_ms, input_type, messages, prompt, response,
              prompt_tokens, completion_tokens, total_tokens, temperature,
-             status, error, trace_id, data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             status, error, trace_id, retrieval_id, data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             experiment_id,
             llm_data.get('model'),
@@ -666,6 +681,7 @@ def store_llm_call(data: Dict) -> None:
             llm_data.get('status'),
             llm_data.get('error'),
             llm_data.get('trace_id'),
+            llm_data.get('retrieval_id'),
             json.dumps(llm_data)
         ))
         conn.commit()
