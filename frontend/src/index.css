@@ -364,12 +364,21 @@
   background: var(--text-muted);
 }
 
-/* Chunk highlight styles */
+/* Chunk highlight styles - exact match */
 .chunk-highlight {
   background-color: var(--accent-muted);
   border-radius: 2px;
   padding: 0 2px;
   box-decoration-break: clone;
+}
+
+/* Chunk highlight styles - word-based fallback (softer highlight) */
+.chunk-highlight-word {
+  background-color: rgba(251, 191, 36, 0.3);
+  border-radius: 2px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  border-bottom: 1px dashed rgba(217, 119, 6, 0.5);
 }
 
 /* PDF text layer styles */

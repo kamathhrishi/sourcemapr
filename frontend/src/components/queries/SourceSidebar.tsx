@@ -69,25 +69,120 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
   const safePage = Math.min(Math.max(1, sidebarPage), totalPages)
   const currentPageText = pages[safePage - 1] ?? ''
 
-  // Highlight text in content
+  // Extract significant words from text (ignoring common stop words)
+  const getSignificantWords = useCallback((text: string): Set<string> => {
+    const stopWords = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+      'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had',
+      'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must',
+      'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them', 'their', 'we', 'our',
+      'you', 'your', 'he', 'she', 'his', 'her', 'can', 'such', 'which', 'who', 'whom',
+      'what', 'where', 'when', 'how', 'why', 'all', 'each', 'every', 'both', 'few', 'more',
+      'most', 'other', 'some', 'any', 'no', 'not', 'only', 'same', 'so', 'than', 'too',
+      'very', 'just', 'also', 'now', 'here', 'there', 'then', 'if', 'else', 'use', 'used',
+    ])
+
+    const words = text.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 3 && !stopWords.has(w))
+
+    return new Set(words)
+  }, [])
+
+  // Find the region in text with the most matching words from chunk
+  const findBestMatchingRegion = useCallback((text: string, chunkWords: Set<string>): { start: number; end: number } | null => {
+    if (chunkWords.size === 0) return null
+
+    const textLower = text.toLowerCase()
+    const windowSize = 500 // Look for ~500 char regions
+    const step = 100 // Slide by 100 chars
+
+    let bestStart = 0
+    let bestEnd = 0
+    let bestScore = 0
+
+    for (let i = 0; i < text.length - 100; i += step) {
+      const regionEnd = Math.min(i + windowSize, text.length)
+      const region = textLower.slice(i, regionEnd)
+      const regionWords = region.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+
+      // Count how many chunk words appear in this region
+      let score = 0
+      for (const word of regionWords) {
+        if (chunkWords.has(word)) score++
+      }
+
+      if (score > bestScore) {
+        bestScore = score
+        bestStart = i
+        bestEnd = regionEnd
+      }
+    }
+
+    // Only return if we found a decent match (at least 3 words)
+    if (bestScore >= 3) {
+      // Expand to word boundaries
+      while (bestStart > 0 && text[bestStart - 1] !== ' ' && text[bestStart - 1] !== '\n') bestStart--
+      while (bestEnd < text.length && text[bestEnd] !== ' ' && text[bestEnd] !== '\n') bestEnd++
+      return { start: bestStart, end: bestEnd }
+    }
+
+    return null
+  }, [])
+
+  // Highlight text in content with fallback to best matching region
   const highlightTextInContent = useCallback((text: string) => {
     if (!highlightChunkText) return text
 
+    // First try: exact match with flexible whitespace
     const escaped = highlightChunkText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const normalizedSearch = escaped.replace(/\s+/g, '\\s+')
     try {
       const regex = new RegExp(`(${normalizedSearch})`, 'gi')
-      return text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
+      const exactMatch = text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
+      if (exactMatch !== text) {
+        return exactMatch // Found exact match
+      }
     } catch {
-      return text
+      // Continue to fallback
     }
-  }, [highlightChunkText])
 
-  // Scroll to highlight
+    // Second try: match the first 100 characters (chunk might be truncated)
+    if (highlightChunkText.length > 100) {
+      const shortChunk = highlightChunkText.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+      try {
+        const regex = new RegExp(`(${shortChunk})`, 'gi')
+        const shortMatch = text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
+        if (shortMatch !== text) {
+          return shortMatch
+        }
+      } catch {
+        // Continue to fallback
+      }
+    }
+
+    // Fallback: find region with most matching words and highlight it
+    const chunkWords = getSignificantWords(highlightChunkText)
+    const bestRegion = findBestMatchingRegion(text, chunkWords)
+
+    if (bestRegion) {
+      const before = text.slice(0, bestRegion.start)
+      const match = text.slice(bestRegion.start, bestRegion.end)
+      const after = text.slice(bestRegion.end)
+      return `${before}<mark class="chunk-highlight-word">${match}</mark>${after}`
+    }
+
+    return text
+  }, [highlightChunkText, getSignificantWords, findBestMatchingRegion])
+
+  // Scroll to highlight (supports both exact and word-based highlights)
   useEffect(() => {
     if (highlightChunkText && parsedContainerRef.current) {
       const timer = setTimeout(() => {
-        const highlight = parsedContainerRef.current?.querySelector('.chunk-highlight')
+        // Try exact highlight first, then word-based
+        const highlight = parsedContainerRef.current?.querySelector('.chunk-highlight') ||
+                         parsedContainerRef.current?.querySelector('.chunk-highlight-word')
         if (highlight) {
           highlight.scrollIntoView({ behavior: 'instant', block: 'center' })
         }

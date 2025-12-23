@@ -31,6 +31,23 @@ interface QueryDetailProps {
   data: DashboardData
 }
 
+// Get color based on chunk rank (top chunks get accent colors)
+function getChunkColor(idx: number): { bg: string; border: string; text: string } {
+  if (idx === 0) return { bg: 'rgba(59, 130, 246, 0.1)', border: 'rgba(59, 130, 246, 0.3)', text: 'rgb(59, 130, 246)' }
+  if (idx === 1) return { bg: 'rgba(99, 102, 241, 0.08)', border: 'rgba(99, 102, 241, 0.25)', text: 'rgb(99, 102, 241)' }
+  if (idx === 2) return { bg: 'rgba(139, 92, 246, 0.06)', border: 'rgba(139, 92, 246, 0.2)', text: 'rgb(139, 92, 246)' }
+  if (idx < 5) return { bg: 'rgba(168, 85, 247, 0.04)', border: 'rgba(168, 85, 247, 0.15)', text: 'rgb(168, 85, 247)' }
+  return { bg: 'var(--background-subtle)', border: 'var(--border)', text: 'var(--text-secondary)' }
+}
+
+// Format score with color indication
+function getScoreColor(score: number): string {
+  if (score >= 0.8) return 'rgb(34, 197, 94)' // green
+  if (score >= 0.6) return 'rgb(234, 179, 8)' // yellow
+  if (score >= 0.4) return 'rgb(249, 115, 22)' // orange
+  return 'var(--text-muted)'
+}
+
 // Collapsed chunk component - shows minimal info, click to expand
 function CollapsedChunk({
   chunk,
@@ -43,23 +60,26 @@ function CollapsedChunk({
   onExpand: () => void
   data: DashboardData
 }) {
+  const colors = getChunkColor(idx)
+  const score = chunk.score ?? 0
+
   return (
     <button
       onClick={onExpand}
-      className="w-full p-3 rounded-lg border text-left hover:bg-[var(--surface-hover)] transition-colors"
-      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      className="w-full p-3 rounded-lg border text-left hover:brightness-95 transition-all"
+      style={{ borderColor: colors.border, background: colors.bg }}
     >
       <div className="flex items-center gap-3">
         <div
-          className="w-6 h-6 rounded flex items-center justify-center text-xs font-medium"
-          style={{ background: 'var(--background-subtle)', color: 'var(--text-secondary)' }}
+          className="w-6 h-6 rounded flex items-center justify-center text-xs font-semibold"
+          style={{ background: colors.border, color: idx < 5 ? colors.text : 'var(--text-secondary)' }}
         >
           {idx + 1}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              Score: {(chunk.score ?? 0).toFixed(3)}
+            <span className="text-xs font-medium" style={{ color: getScoreColor(score) }}>
+              {score.toFixed(3)}
             </span>
             {chunk.page_number && (
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -100,22 +120,31 @@ function ExpandedChunk({
   onViewSource: (docId: string, pageNumber?: number | null, chunkText?: string) => void
   canCollapse: boolean
 }) {
+  const colors = getChunkColor(idx)
+  const score = chunk.score ?? 0
+
   return (
     <div
-      className="p-4 rounded-lg border"
-      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      className="p-4 rounded-lg border-l-4"
+      style={{
+        borderLeftColor: idx < 5 ? colors.text : 'var(--border)',
+        borderTop: `1px solid ${colors.border}`,
+        borderRight: `1px solid ${colors.border}`,
+        borderBottom: `1px solid ${colors.border}`,
+        background: colors.bg,
+      }}
     >
       {/* Chunk Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div
-            className="w-7 h-7 rounded flex items-center justify-center text-sm font-medium"
-            style={{ background: 'var(--background-subtle)', color: 'var(--text-primary)' }}
+            className="w-7 h-7 rounded flex items-center justify-center text-sm font-semibold"
+            style={{ background: colors.border, color: idx < 5 ? colors.text : 'var(--text-secondary)' }}
           >
             {idx + 1}
           </div>
-          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Score: <span style={{ color: 'var(--text-primary)' }}>{(chunk.score ?? 0).toFixed(3)}</span>
+          <span className="text-sm font-medium" style={{ color: getScoreColor(score) }}>
+            {score.toFixed(3)}
           </span>
           {chunk.page_number && (
             <Badge variant="outline" className="text-xs">
@@ -161,8 +190,8 @@ function ExpandedChunk({
 
       {/* Chunk Text */}
       <div
-        className="rounded p-3 mb-3 text-sm leading-relaxed"
-        style={{ background: 'var(--background-subtle)' }}
+        className="rounded p-3 mb-3 text-sm leading-relaxed border"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
       >
         {chunk.text}
       </div>
