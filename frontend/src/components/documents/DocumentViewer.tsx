@@ -130,21 +130,112 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     }
   }
 
-  // Highlight text in parsed content
+  // Extract significant words from text (ignoring common stop words)
+  const getSignificantWords = useCallback((text: string): Set<string> => {
+    const stopWords = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+      'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had',
+      'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must',
+      'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them', 'their', 'we', 'our',
+      'you', 'your', 'he', 'she', 'his', 'her', 'can', 'such', 'which', 'who', 'whom',
+      'what', 'where', 'when', 'how', 'why', 'all', 'each', 'every', 'both', 'few', 'more',
+      'most', 'other', 'some', 'any', 'no', 'not', 'only', 'same', 'so', 'than', 'too',
+      'very', 'just', 'also', 'now', 'here', 'there', 'then', 'if', 'else', 'use', 'used',
+    ])
+
+    const words = text.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 3 && !stopWords.has(w))
+
+    return new Set(words)
+  }, [])
+
+  // Find the region in text with the most matching words from chunk
+  const findBestMatchingRegion = useCallback((text: string, chunkWords: Set<string>): { start: number; end: number } | null => {
+    if (chunkWords.size === 0) return null
+
+    const textLower = text.toLowerCase()
+    const windowSize = 500 // Look for ~500 char regions
+    const step = 100 // Slide by 100 chars
+
+    let bestStart = 0
+    let bestEnd = 0
+    let bestScore = 0
+
+    for (let i = 0; i < text.length - 100; i += step) {
+      const regionEnd = Math.min(i + windowSize, text.length)
+      const region = textLower.slice(i, regionEnd)
+      const regionWords = region.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+
+      // Count how many chunk words appear in this region
+      let score = 0
+      for (const word of regionWords) {
+        if (chunkWords.has(word)) score++
+      }
+
+      if (score > bestScore) {
+        bestScore = score
+        bestStart = i
+        bestEnd = regionEnd
+      }
+    }
+
+    // Only return if we found a decent match (at least 3 words)
+    if (bestScore >= 3) {
+      // Expand to word boundaries
+      while (bestStart > 0 && text[bestStart - 1] !== ' ' && text[bestStart - 1] !== '\n') bestStart--
+      while (bestEnd < text.length && text[bestEnd] !== ' ' && text[bestEnd] !== '\n') bestEnd++
+      return { start: bestStart, end: bestEnd }
+    }
+
+    return null
+  }, [])
+
+  // Highlight text in parsed content with fallback to fuzzy matching
   const highlightTextInContent = useCallback((text: string) => {
     if (!highlightChunkText) return text
 
-    // Escape special regex characters
+    // First try: exact match with flexible whitespace
     const escaped = highlightChunkText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    // Normalize whitespace for matching
     const normalizedSearch = escaped.replace(/\s+/g, '\\s+')
     try {
       const regex = new RegExp(`(${normalizedSearch})`, 'gi')
-      return text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
+      const exactMatch = text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
+      if (exactMatch !== text) {
+        return exactMatch // Found exact match
+      }
     } catch {
-      return text
+      // Continue to fallback
     }
-  }, [highlightChunkText])
+
+    // Second try: match the first 100 characters (chunk might be truncated)
+    if (highlightChunkText.length > 100) {
+      const shortChunk = highlightChunkText.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+      try {
+        const regex = new RegExp(`(${shortChunk})`, 'gi')
+        const shortMatch = text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
+        if (shortMatch !== text) {
+          return shortMatch
+        }
+      } catch {
+        // Continue to fallback
+      }
+    }
+
+    // Fallback: find region with most matching words and highlight it
+    const chunkWords = getSignificantWords(highlightChunkText)
+    const bestRegion = findBestMatchingRegion(text, chunkWords)
+
+    if (bestRegion) {
+      const before = text.slice(0, bestRegion.start)
+      const match = text.slice(bestRegion.start, bestRegion.end)
+      const after = text.slice(bestRegion.end)
+      return `${before}<mark class="chunk-highlight-word">${match}</mark>${after}`
+    }
+
+    return text
+  }, [highlightChunkText, getSignificantWords, findBestMatchingRegion])
 
   // PDF document loaded
   const onDocumentLoadSuccess = ({ numPages: pages }: { numPages: number }) => {
@@ -159,7 +250,7 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     setPdfError('Failed to load PDF')
   }
 
-  // Highlight text in PDF text layer
+  // Highlight text in PDF text layer with fuzzy matching fallback
   const highlightPdfText = useCallback(() => {
     if (!highlightChunkText || !pdfContainerRef.current) return
 
@@ -172,7 +263,7 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     if (!textLayers.length) return
 
     const searchText = highlightChunkText.toLowerCase().replace(/\s+/g, ' ').trim()
-    const searchWords = searchText.split(' ').filter(w => w.length > 3).slice(0, 10)
+    const chunkWords = getSignificantWords(highlightChunkText)
 
     textLayers.forEach((textLayer) => {
       const spans = textLayer.querySelectorAll('span')
@@ -188,35 +279,63 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
 
       const fullTextLower = fullText.toLowerCase()
 
-      // Try to find match using first few words
-      let matchFound = false
-      for (const word of searchWords) {
-        const wordIdx = fullTextLower.indexOf(word)
-        if (wordIdx !== -1) {
-          // Find all spans that overlap with match region
-          const matchStart = wordIdx
-          const matchEnd = Math.min(wordIdx + searchText.length, fullText.length)
+      // First try: exact match
+      const exactMatchIdx = fullTextLower.indexOf(searchText)
+      if (exactMatchIdx !== -1) {
+        const matchStart = exactMatchIdx
+        const matchEnd = Math.min(exactMatchIdx + searchText.length, fullText.length)
+
+        spanRanges.forEach(({ span, start, end }) => {
+          if (start < matchEnd && end > matchStart) {
+            span.classList.add('pdf-chunk-highlight')
+          }
+        })
+
+        const firstHighlight = textLayer.querySelector('.pdf-chunk-highlight')
+        if (firstHighlight) {
+          firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+        return
+      }
+
+      // Second try: match first 100 chars
+      if (searchText.length > 100) {
+        const shortSearch = searchText.slice(0, 100)
+        const shortMatchIdx = fullTextLower.indexOf(shortSearch)
+        if (shortMatchIdx !== -1) {
+          const matchStart = shortMatchIdx
+          const matchEnd = Math.min(shortMatchIdx + shortSearch.length, fullText.length)
 
           spanRanges.forEach(({ span, start, end }) => {
-            // Check if this span overlaps with our match
             if (start < matchEnd && end > matchStart) {
               span.classList.add('pdf-chunk-highlight')
-              matchFound = true
             }
           })
 
-          if (matchFound) {
-            // Scroll to first highlighted element
-            const firstHighlight = textLayer.querySelector('.pdf-chunk-highlight')
-            if (firstHighlight) {
-              firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' })
-            }
-            break
+          const firstHighlight = textLayer.querySelector('.pdf-chunk-highlight')
+          if (firstHighlight) {
+            firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' })
           }
+          return
+        }
+      }
+
+      // Fallback: fuzzy matching - find region with most matching words
+      const bestRegion = findBestMatchingRegion(fullText, chunkWords)
+      if (bestRegion) {
+        spanRanges.forEach(({ span, start, end }) => {
+          if (start < bestRegion.end && end > bestRegion.start) {
+            span.classList.add('pdf-chunk-highlight')
+          }
+        })
+
+        const firstHighlight = textLayer.querySelector('.pdf-chunk-highlight')
+        if (firstHighlight) {
+          firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' })
         }
       }
     })
-  }, [highlightChunkText])
+  }, [highlightChunkText, getSignificantWords, findBestMatchingRegion])
 
   // Apply PDF highlighting after page renders
   useEffect(() => {
@@ -226,11 +345,13 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     }
   }, [highlightChunkText, pdfLoading, isPdf, currentPage, highlightPdfText])
 
-  // Scroll to highlight after render in parsed view
+  // Scroll to highlight after render in parsed view (supports both exact and word-based highlights)
   useEffect(() => {
     if (highlightChunkText && parsedContainerRef.current) {
       const timer = setTimeout(() => {
-        const highlight = parsedContainerRef.current?.querySelector('.chunk-highlight')
+        // Try exact highlight first, then word-based
+        const highlight = parsedContainerRef.current?.querySelector('.chunk-highlight') ||
+                         parsedContainerRef.current?.querySelector('.chunk-highlight-word')
         if (highlight) {
           highlight.scrollIntoView({ behavior: 'instant', block: 'center' })
         }

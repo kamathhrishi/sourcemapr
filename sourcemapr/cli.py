@@ -260,11 +260,11 @@ def cmd_status():
 
 
 def cmd_clear(skip_confirm: bool = False, full_reset: bool = False):
-    """Clear all trace data."""
+    """Clear all trace data and experiments."""
     if full_reset:
         msg = "This will DELETE ALL data including experiments and frameworks. Continue? [y/N] "
     else:
-        msg = "This will delete all traces, documents, and data (keeps experiments). Continue? [y/N] "
+        msg = "This will delete all traces, documents, data, AND experiments. Continue? [y/N] "
 
     if not skip_confirm:
         response = input(msg)
@@ -280,8 +280,15 @@ def cmd_clear(skip_confirm: bool = False, full_reset: bool = False):
             db.reset_all_data()
             print("All data and experiments cleared (full reset)")
         else:
+            # Clear all data including experiments (but keep Default experiment)
             db.clear_all_data()
-            print("All data cleared (experiments preserved)")
+            # Also delete all experiments except Default
+            from sourcemapr.server.database import get_db
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM experiments WHERE name != 'Default'")
+                conn.commit()
+            print("All data and experiments cleared (Default experiment preserved)")
     except Exception as e:
         print(f"Error clearing data: {e}")
         sys.exit(1)

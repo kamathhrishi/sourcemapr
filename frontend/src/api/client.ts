@@ -2,6 +2,7 @@ import type {
   Experiment,
   DashboardData,
   ParsedDocument,
+  Pipeline,
   CreateExperimentRequest,
   UpdateExperimentRequest,
   AssignItemsRequest,
@@ -92,5 +93,25 @@ export const api = {
   // File URL helper
   getFileUrl(filePath: string): string {
     return `${BASE_URL}/files/${encodeURIComponent(filePath)}`
+  },
+
+  // Pipelines
+  async getPipelines(experimentId?: number): Promise<Pipeline[]> {
+    const url = experimentId
+      ? `${BASE_URL}/pipelines?experiment_id=${experimentId}`
+      : `${BASE_URL}/pipelines`
+    return fetchJson<Pipeline[]>(url)
+  },
+
+  async getPipeline(pipelineId: string): Promise<Pipeline> {
+    return fetchJson<Pipeline>(`${BASE_URL}/pipelines/${encodeURIComponent(pipelineId)}`)
+  },
+
+  async getRetrievalPipeline(retrievalId: string): Promise<Pipeline | null> {
+    try {
+      return await fetchJson<Pipeline>(`${BASE_URL}/retrievals/${encodeURIComponent(retrievalId)}/pipeline`)
+    } catch {
+      return null
+    }
   },
 }

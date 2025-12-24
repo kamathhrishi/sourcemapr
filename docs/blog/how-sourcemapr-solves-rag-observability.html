@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-VY7SRYYRCL"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-VY7SRYYRCL');
+  </script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How SourceMapR Solves RAG Observability: A Practical Guide | SourceMapR</title>
+  <meta name="description" content="Learn how SourceMapR provides RAG observability and evidence tracing for LangChain and LlamaIndex. Add RAG debugging tools to your pipeline with just two lines of code." />
+  <meta name="keywords" content="SourceMapR, RAG observability, RAG debugging tool, RAG evidence tracing, LangChain observability, LlamaIndex observability, trace LLM answers to sources, chunking strategy debugging, RAG trace viewer" />
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="How SourceMapR Solves RAG Observability: A Practical Guide" />
+  <meta property="og:description" content="Learn how SourceMapR provides RAG observability and evidence tracing for LangChain and LlamaIndex." />
+  <meta property="og:url" content="https://kamathhrishi.github.io/sourcemapr/blog/how-sourcemapr-solves-rag-observability.html" />
+  
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How SourceMapR Solves RAG Observability: A Practical Guide" />
+  <meta name="twitter:description" content="Learn how SourceMapR provides RAG observability and evidence tracing for LangChain and LlamaIndex." />
+  
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://kamathhrishi.github.io/sourcemapr/blog/how-sourcemapr-solves-rag-observability.html" />
+  
+  <!-- Structured Data for Article -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "How SourceMapR Solves RAG Observability: A Practical Guide",
+    "description": "Learn how SourceMapR provides RAG observability and evidence tracing for LangChain and LlamaIndex. Add RAG debugging tools to your pipeline with just two lines of code.",
+    "author": {
+      "@type": "Person",
+      "name": "SourceMapR Team"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "SourceMapR",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://kamathhrishi.github.io/sourcemapr/"
+      }
+    },
+    "datePublished": "2024-12-13",
+    "dateModified": "2024-12-13",
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": "https://kamathhrishi.github.io/sourcemapr/blog/how-sourcemapr-solves-rag-observability.html"
+    },
+    "keywords": "SourceMapR, RAG observability, RAG debugging tool, RAG evidence tracing, LangChain observability, LlamaIndex observability"
+  }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .gradient-text {
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .prose {
+      max-width: none;
+    }
+    .prose h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      color: #111827;
+    }
+    @media (min-width: 640px) {
+      .prose h2 {
+        font-size: 1.875rem;
+        margin-top: 3rem;
+        margin-bottom: 1.5rem;
+      }
+    }
+    .prose h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+      color: #1f2937;
+    }
+    @media (min-width: 640px) {
+      .prose h3 {
+        font-size: 1.5rem;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+      }
+    }
+    .prose h4 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-top: 1.25rem;
+      margin-bottom: 0.5rem;
+      color: #374151;
+    }
+    @media (min-width: 640px) {
+      .prose h4 {
+        font-size: 1.25rem;
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+      }
+    }
+    .prose p {
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+      line-height: 1.75;
+      color: #4b5563;
+      font-size: 1rem;
+    }
+    @media (min-width: 640px) {
+      .prose p {
+        margin-top: 1.25rem;
+        margin-bottom: 1.25rem;
+        line-height: 1.8;
+        font-size: 1.0625rem;
+      }
+    }
+    .prose ul, .prose ol {
+      margin-top: 1.25rem;
+      margin-bottom: 1.25rem;
+      padding-left: 1.75rem;
+    }
+    .prose li {
+      margin-top: 0.75rem;
+      margin-bottom: 0.75rem;
+      color: #4b5563;
+      line-height: 1.75;
+    }
+    .prose code {
+      background-color: #f3f4f6;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.375rem;
+      font-size: 0.9em;
+      color: #1f2937;
+      font-weight: 500;
+      border: 1px solid #e5e7eb;
+    }
+    .prose pre {
+      background-color: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 0.75rem;
+      padding: 1rem;
+      overflow-x: auto;
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (min-width: 640px) {
+      .prose pre {
+        padding: 1.5rem;
+        margin-top: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+    }
+    .prose pre code {
+      background: transparent;
+      padding: 0;
+      color: #e5e7eb;
+      font-weight: 400;
+      font-size: 0.95em;
+      border: none;
+    }
+    .prose blockquote {
+      border-left: 4px solid #818cf8;
+      padding-left: 1.5rem;
+      margin-left: 0;
+      margin-top: 1.5rem;
+      margin-bottom: 1.5rem;
+      font-style: italic;
+      color: #6b7280;
+      background-color: #f9fafb;
+      padding: 1rem 1.5rem;
+      border-radius: 0.5rem;
+    }
+    .prose table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .prose table th,
+    .prose table td {
+      border: 1px solid #e5e7eb;
+      padding: 0.75rem;
+      text-align: left;
+    }
+    .prose table th {
+      background-color: #f3f4f6;
+      font-weight: 600;
+      color: #111827;
+    }
+    .prose table td {
+      color: #4b5563;
+    }
+    .prose strong {
+      font-weight: 600;
+      color: #111827;
+    }
+    .prose em {
+      font-style: italic;
+      color: #6b7280;
+    }
+    .prose a {
+      color: #6366f1;
+      text-decoration: underline;
+      transition: all 0.2s;
+    }
+    .prose a:hover {
+      color: #4f46e5;
+    }
+  </style>
+</head>
+
+<body class="bg-white text-gray-900 antialiased">
+  <!-- Navigation -->
+  <header class="sticky top-0 z-50 border-b border-gray-200 bg-white/80 backdrop-blur-sm">
+    <nav class="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
+      <div class="flex items-center gap-3">
+        <a href="../index.html" class="flex items-center gap-3">
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
+            <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <circle cx="10" cy="13" r="2" fill="currentColor" stroke="none"/>
+              <circle cx="16" cy="16" r="2" fill="currentColor" stroke="none"/>
+              <path d="M10 13 L13 14.5 L16 16" stroke-width="1.5"/>
+              <circle cx="8" cy="18" r="1.5" fill="currentColor" stroke="none"/>
+              <path d="M10 13 L8 18" stroke-width="1.5"/>
+            </svg>
+          </div>
+          <span class="text-xl font-semibold">SourceMapR</span>
+        </a>
+      </div>
+
+      <div class="hidden items-center gap-8 text-sm font-medium text-gray-600 md:flex">
+        <a href="../index.html#features" class="hover:text-gray-900 transition-colors">Features</a>
+        <a href="../index.html#frameworks" class="hover:text-gray-900 transition-colors">Frameworks</a>
+        <a href="../index.html#how-it-works" class="hover:text-gray-900 transition-colors">How it works</a>
+        <a href="index.html" class="text-gray-900 font-medium">Blog</a>
+        <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="hover:text-gray-900 transition-colors">Docs</a>
+      </div>
+
+      <div class="flex items-center gap-2 sm:gap-3">
+        <a href="https://github.com/kamathhrishi/sourcemapr" class="group hidden sm:inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+          <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          <span id="star-text">Star</span>
+          <span id="star-count" class="hidden rounded-md bg-gray-100 px-1.5 py-0.5 text-xs font-semibold"></span>
+        </a>
+        <a href="../index.html#get-started" class="rounded-lg bg-gray-900 px-3 sm:px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors">
+          Get started
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Article Content -->
+  <article class="relative">
+    <div class="mx-auto max-w-4xl px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
+      <!-- Back link -->
+      <div class="mb-8">
+        <a href="index.html" class="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors group">
+          <svg class="h-4 w-4 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back to Blog
+        </a>
+      </div>
+
+      <!-- Article Header -->
+      <header class="mb-8 sm:mb-12 rounded-xl bg-white p-6 sm:p-8 shadow-sm border border-gray-200">
+        <div class="mb-4 flex items-center gap-2">
+          <span class="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
+            Tutorial
+          </span>
+          <span class="rounded-full bg-pink-100 px-3 py-1 text-xs font-medium text-pink-700">
+            Guide
+          </span>
+        </div>
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900 mb-3 sm:mb-4 sm:text-4xl lg:text-5xl">
+          How SourceMapR Solves RAG Observability: A Practical Guide
+        </h1>
+        <p class="text-base sm:text-lg text-gray-600 leading-relaxed">
+          A practical guide to implementing evidence observability in your RAG pipeline with SourceMapR.
+        </p>
+      </header>
+
+      <!-- Article Body -->
+      <div class="prose rounded-xl bg-white p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200">
+        <p>If you've read <a href="evidence-observability-for-rag.html">Evidence Observability for RAG: Why Debugging RAG Pipelines Still Sucks</a>, you understand the problem: traditional agent and LLM observability tools show you retrieved chunks, but they don't show you where those chunks came from - the original documents, the parsed data, or how documents were processed. This article shows you how SourceMapR solves this by providing complete pipeline visibility from raw documents through all intermediate steps to the final answer.</p>
+
+        <h2>What Is SourceMapR?</h2>
+
+        <p>SourceMapR is an open-source RAG debugging tool that provides evidence observability for RAG pipelines. Unlike traditional observability tools that only show retrieved chunks, SourceMapR maps answers back to original documents, parsed data, and all intermediate steps in your RAG pipeline. It's designed specifically for developers who need to see the complete journey from raw documents to final answers.</p>
+
+        <p>SourceMapR is local-first (runs on your machine, your data stays local), zero-config (two lines of code to get started), framework-agnostic (works with LangChain, LlamaIndex, and OpenAI), and MIT-licensed (no vendor lock-in, completely open source). It automatically instruments your RAG pipeline without requiring code changes, tracing everything from document loading and parsing through chunking, embedding, retrieval, and LLM calls - giving you complete visibility into how raw documents become answers.</p>
+
+        <h2>The Problem-Solution Matrix</h2>
+
+        <p>Here's how SourceMapR solves common RAG debugging problems:</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Problem</th>
+              <th>SourceMapR Solution</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>"Which chunks did the retriever return?"</td>
+              <td>See every retrieved chunk with similarity scores, plus where they came from in the original documents</td>
+            </tr>
+            <tr>
+              <td>"Where did these chunks come from?"</td>
+              <td>Map chunks back to original documents and parsed data - see the complete document processing pipeline</td>
+            </tr>
+            <tr>
+              <td>"What prompt was sent to the LLM?"</td>
+              <td>Full LLM tracing captures prompts, responses, and token counts</td>
+            </tr>
+            <tr>
+              <td>"Why did the model hallucinate?"</td>
+              <td>Click any chunk to view it in the original PDF, see how documents were parsed, and verify grounding</td>
+            </tr>
+            <tr>
+              <td>"How were my documents processed?"</td>
+              <td>See the complete pipeline: raw documents → parsed data → chunks → retrieval → answer</td>
+            </tr>
+            <tr>
+              <td>"Is my chunking strategy working?"</td>
+              <td>Compare experiments side by side, see how parsed data became chunks</td>
+            </tr>
+            <tr>
+              <td>"How do I trace LLM answers to sources?"</td>
+              <td>Complete evidence lineage from answer → chunks → parsed data → original documents</td>
+            </tr>
+            <tr>
+              <td>"What are the similarity scores?"</td>
+              <td>RAG similarity score viewer shows retrieval quality and ranking</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>All of this is available through a real-time dashboard that updates as your RAG pipeline executes.</p>
+
+        <h2>What Gets Traced: Complete RAG Evidence Tracing</h2>
+
+        <p>SourceMapR provides comprehensive RAG observability by tracing every stage of your pipeline:</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>Data Captured</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Original Documents</strong></td>
+              <td>Raw documents (PDFs, text files) with file paths and metadata</td>
+            </tr>
+            <tr>
+              <td><strong>Document Loading</strong></td>
+              <td>Filename, absolute path, page count, text length, full text</td>
+            </tr>
+            <tr>
+              <td><strong>Parsing & Processing</strong></td>
+              <td>Full extracted text with page breaks - see exactly what was parsed from each document</td>
+            </tr>
+            <tr>
+              <td><strong>Chunking</strong></td>
+              <td>Chunk ID, text, index, page number, char positions, metadata</td>
+            </tr>
+            <tr>
+              <td><strong>Embeddings</strong></td>
+              <td>Model name, vector dimensions, duration</td>
+            </tr>
+            <tr>
+              <td><strong>Retrieval</strong></td>
+              <td>Query, top-k results, similarity scores, source file paths</td>
+            </tr>
+            <tr>
+              <td><strong>LLM Calls</strong></td>
+              <td>Model, messages/prompt, response, tokens, latency, tool calls</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2>Key Features: RAG Evidence Tracing and Observability</h2>
+
+        <h3>1. Answer to Evidence Mapping: Trace LLM Answers to Original Documents</h3>
+
+        <p>Every answer in your RAG system can be traced back to the exact retrieved chunks that produced it, and more importantly, back to the original documents and parsed data those chunks came from. Unlike traditional observability tools that only show retrieved chunks, SourceMapR shows you the complete path: answer → chunks → parsed data → original documents. The RAG evidence viewer shows similarity scores for each retrieved chunk, complete metadata including page numbers and file paths, retrieval ordering and ranking, and chunk text with context. Most importantly, you can click any chunk to see it in the original document and understand how the document was parsed and processed. This is essential for grounding verification - ensuring your model's answers are actually supported by the retrieved evidence and understanding where that evidence originated.</p>
+
+        <h3>2. RAG Evidence Viewer: Map Chunks to Original Documents and Parsed Data</h3>
+
+        <p>The RAG evidence viewer lets you click any retrieved chunk to see it highlighted in the original document (PDF, text file, etc.). This is the key differentiator from traditional observability tools - you don't just see the chunk text, you see where it came from in the original document and how the document was parsed. This provides crucial context for understanding why specific chunks were retrieved (context around the chunk), whether chunk boundaries make sense, if important context was cut off during chunking, how the document was processed, and how the chunk relates to surrounding content. You can see the complete journey: original document → parsed data → chunk → retrieval → answer. This is especially valuable for debugging RAG hallucinations - you can immediately see if the retrieved context actually supports the model's answer and trace it back to the source document.</p>
+
+        <p><strong>Note:</strong> The document viewer is optimized for PDF files. HTML document support is experimental - files may render but chunk highlighting and navigation may not work as expected.</p>
+
+        <h3>3. Full LLM Tracing: Prompt and Response Capture</h3>
+
+        <p>Complete LLM tracing captures everything about your model calls: the exact prompt sent to the model (including all retrieved context), full response text with finish reasons, token usage (prompt tokens, completion tokens, and total tokens), latency (request duration in milliseconds), model info (model name, temperature, max_tokens, and other parameters), and tool calls (function calls and tool usage when applicable). This LLM tracing is essential for understanding token costs, debugging prompt construction, and optimizing your RAG pipeline's performance.</p>
+
+        <h3>4. Retrieval and Chunking Strategy Debugging</h3>
+
+        <p>SourceMapR provides complete visibility into your RAG pipeline's retrieval and chunking process, enabling similarity score debugging (see exact similarity scores for each retrieved chunk to understand retrieval quality), chunking strategy debugging (view how chunks were created with character positions, page numbers, and metadata), retrieval evaluation (compare different retrievers, embedding models, and chunk sizes), vector search debugging (understand why certain chunks ranked higher than others), and chunk boundary inspection (see if important context was lost during chunking). This is critical for optimizing your RAG pipeline. You can answer questions like "Is my chunk size too small?" or "Are my similarity scores meaningful?"</p>
+
+        <h3>5. Experiment Tracking for RAG Pipeline Optimization</h3>
+
+        <p>SourceMapR's experiment tracking lets you organize runs and compare configurations side-by-side. This is essential for testing different retrievers (compare vector search vs hybrid search vs reranking), optimizing chunk sizes (compare chunk-size-256 vs chunk-size-512 vs chunk-size-1024), evaluating embedding models (test different embedding models and see their impact on retrieval), and A/B testing configurations (systematically compare different pipeline configurations). This experiment tracking makes it easy to answer questions like "Which chunking strategy works best for my documents?" or "Does reranking improve my results?"</p>
+
+        <h3>6. Real-time RAG Trace Viewer</h3>
+
+        <p>Watch new traces appear as your RAG pipeline executes. This real-time RAG trace viewer gives you immediate feedback on evidence lineage and retrieval transparency.</p>
+
+        <h3>7. LangChain and LlamaIndex Observability Support</h3>
+
+        <p>SourceMapR provides comprehensive LangChain observability and LlamaIndex observability. These frameworks are fully supported:</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Framework</th>
+              <th>Documents</th>
+              <th>Chunks</th>
+              <th>Retrieval</th>
+              <th>LLM Calls</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>LlamaIndex</td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>✅</td>
+            </tr>
+            <tr>
+              <td>LangChain</td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>✅</td>
+            </tr>
+            <tr>
+              <td>OpenAI</td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td>✅</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>And all without modifying your existing pipeline.</p>
+
+        <h2>Quick Start: Using SourceMapR for RAG Observability</h2>
+
+        <p>Getting started with SourceMapR takes less than 60 seconds. Here's how to add RAG observability to your pipeline:</p>
+
+        <h3>Installation</h3>
+
+        <pre><code>git clone https://github.com/kamathhrishi/sourcemapr.git
+cd sourcemapr && pip install -e .</code></pre>
+
+        <h3>Start the Dashboard</h3>
+
+        <p>The SourceMapR dashboard runs locally on your machine. Run <code>sourcemapr server</code> to start the dashboard at <code>http://localhost:5000</code>. You can also run it in the background with <code>sourcemapr server -b</code> or on a custom port with <code>sourcemapr server -p 8080</code>.</p>
+
+        <h3>Instrument Your Pipeline</h3>
+
+        <p>Add RAG observability to your existing code with just two lines:</p>
+
+        <h4>For LlamaIndex:</h4>
+
+        <pre><code>from sourcemapr import init_tracing, stop_tracing
+
+init_tracing(endpoint="http://localhost:5000")
+
+# Your existing LlamaIndex code - unchanged
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
+
+documents = SimpleDirectoryReader("./papers").load_data()
+index = VectorStoreIndex.from_documents(documents)
+response = index.as_query_engine().query("What is attention?")
+
+stop_tracing()</code></pre>
+
+        <h4>For LangChain:</h4>
+
+        <pre><code>from sourcemapr import init_tracing, stop_tracing, get_langchain_handler
+
+init_tracing(endpoint="http://localhost:5000")
+handler = get_langchain_handler()
+
+# Your existing LangChain code - unchanged
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import ChatOpenAI
+
+loader = PyPDFLoader("./papers/attention.pdf")
+documents = loader.load()
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=512)
+chunks = splitter.split_documents(documents)
+
+# Pass handler to trace LLM calls
+llm = ChatOpenAI(model="gpt-4o-mini")
+response = llm.invoke("What is attention?", config={"callbacks": [handler]})
+
+stop_tracing()</code></pre>
+
+        <p>That's it. Your code stays the same - SourceMapR automatically instruments document loading, chunking, retrieval, and LLM calls. Open <code>http://localhost:5000</code> to see traces appear in real-time.</p>
+
+        <h2>Real-World RAG Debugging Scenarios: What SourceMapR Actually Helps With</h2>
+
+        <p>Here are concrete examples of how SourceMapR's RAG observability solves real debugging problems:</p>
+
+        <h3>Scenario 1: "Which chunks did the retriever return, and where did they come from?"</h3>
+
+        <p><strong>Problem:</strong> Traditional observability tools show you retrieved chunks, but not where they came from. You can't see the original documents, the parsed data, or how documents were processed. <strong>Solution:</strong> SourceMapR's RAG evidence viewer shows every retrieved chunk with similarity scores, plus maps each chunk back to its original document and parsed data. You can see exactly which chunks were returned, their ranking, their scores, and most importantly, where they originated in the original documents and how those documents were processed.</p>
+
+        <h3>Scenario 2: "What prompt did my LLM actually receive?"</h3>
+
+        <p><strong>Problem:</strong> You're not sure if your prompt construction is working correctly. You can't see the final prompt that was sent to the model. <strong>Solution:</strong> Full LLM tracing captures the exact prompt sent to the model, including all retrieved context. You can see token counts, latency, and the complete prompt/response cycle.</p>
+
+        <h3>Scenario 3: "Why is my RAG model hallucinating?"</h3>
+
+        <p><strong>Problem:</strong> Your model is producing answers that aren't supported by the retrieved context. Traditional observability tools show you the chunks, but you can't see the original documents or how they were parsed. <strong>Solution:</strong> SourceMapR's evidence lineage lets you trace model answers back to original documents through all intermediate steps. Click any chunk to see it in the original document, view how the document was parsed, and see the complete pipeline from raw document → parsed data → chunk → retrieval → answer. This enables complete grounding verification - you can immediately see if the retrieved context actually supports the model's answer and understand how the original document was processed.</p>
+
+        <h3>Scenario 4: "How to debug RAG hallucinations?"</h3>
+
+        <p><strong>Problem:</strong> You need a systematic way to debug hallucinations and understand where your pipeline is failing. <strong>Solution:</strong> SourceMapR provides a complete audit trail. You can see if the problem is in retrieval (wrong chunks), chunking (lost context), or prompt construction (poor context formatting). This makes it easy to identify when chunking strategy debugging is needed.</p>
+
+        <h3>Scenario 5: "Is my chunking strategy broken?"</h3>
+
+        <p><strong>Problem:</strong> You're not sure if your chunk size is optimal or if important context is being lost during chunking. <strong>Solution:</strong> SourceMapR's chunking strategy debugging shows exactly how chunks were created, with character positions and page numbers. You can compare experiments with different chunk sizes to see which works best for your documents.</p>
+
+        <h3>Scenario 6: "Is my retrieval too vague or too strict?"</h3>
+
+        <p><strong>Problem:</strong> You can't tell if your similarity scores are meaningful or if your retrieval is working correctly. <strong>Solution:</strong> The RAG similarity score viewer shows retrieval quality and ranking. You can inspect chunk boundaries and similarity scoring to optimize your vector search. This retrieval evaluation helps you understand if you need to adjust your embedding model or retrieval parameters.</p>
+
+        <h3>Scenario 7: "How do I trace LLM answers to original documents?"</h3>
+
+        <p><strong>Problem:</strong> You need to verify that your model's answers are actually grounded in the retrieved documents, but traditional observability tools only show chunks, not the original documents or parsed data. <strong>Solution:</strong> SourceMapR provides complete evidence lineage from answer → chunks → parsed data → original documents. You can trace every answer back to its source document, see how that document was parsed and processed, and understand all intermediate steps in the pipeline. This enables explainable RAG with complete transparency from raw documents to final answers.</p>
+
+        <p>All of these RAG debugging capabilities are impossible with normal logs. That's why evidence observability for RAG is essential for building reliable RAG systems.</p>
+
+        <h2>Who Should Use SourceMapR for RAG Observability?</h2>
+
+        <p>SourceMapR is the RAG debugging tool for developers who are building with LangChain or LlamaIndex and need LangChain observability or LlamaIndex observability, want visibility into RAG internals and evidence tracing, need grounding verification to ensure model answers are properly sourced, are experimenting with chunking strategies and retrievers and need chunking strategy debugging, want an open-source, MIT-licensed RAG pipeline debugger without vendor lock-in, and are tired of print-debugging RAG systems and need a proper RAG trace viewer.</p>
+
+        <h3>When SourceMapR Shines</h3>
+
+        <p>SourceMapR is designed for local development (debug your RAG pipeline during development), experiment evaluation (compare different configurations and strategies), pipeline optimization (understand what's working and what's not), grounding verification (ensure your model's answers are properly sourced), and educational purposes (learn how RAG pipelines actually work).</p>
+
+        <h3>Limitations</h3>
+
+        <p>SourceMapR is not designed for massive enterprise monitoring at scale, production monitoring with thousands of requests per second, or multi-tenant SaaS deployments. For local development, debugging, and experimentation, SourceMapR provides the RAG observability and evidence tracing you need to build reliable RAG systems.</p>
+
+        <h2>Conclusion: Getting Started with SourceMapR</h2>
+
+        <p>RAG systems are complex. They involve multiple stages - document loading, parsing, chunking, embedding, retrieval, and generation - and failures can occur at any point. Traditional observability tools show you retrieved chunks, but they don't show you the original documents, the parsed data, or the intermediate processing steps. Evidence observability gives you the complete picture from raw documents to final answers.</p>
+
+        <p>SourceMapR provides the RAG debugging tools you need to trace LLM answers back to original documents and parsed data, see all intermediate steps in your pipeline, debug RAG hallucinations with complete grounding verification, optimize chunking strategies and retrieval, understand similarity scores and retrieval quality, compare experiments and configurations, and build explainable RAG systems with full transparency from raw documents to final answers.</p>
+
+        <p>If you're building RAG systems with LangChain or LlamaIndex, evidence observability isn't optional - it's essential. SourceMapR makes it easy to add RAG observability to your pipeline with just two lines of code. Get started today: <a href="https://github.com/kamathhrishi/sourcemapr" class="text-indigo-600 hover:text-indigo-700">https://github.com/kamathhrishi/sourcemapr</a></p>
+
+        <p>To understand why evidence observability matters, read <a href="evidence-observability-for-rag.html">Evidence Observability for RAG: Why Debugging RAG Pipelines Still Sucks</a>.</p>
+      </div>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 bg-white py-8 sm:py-12">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-xs sm:text-sm text-gray-600">
+        <div>© <span id="y"></span> SourceMapR — Evidence observability for RAG.</div>
+        <div class="flex flex-wrap gap-3 sm:gap-6">
+          <a href="https://github.com/kamathhrishi/sourcemapr" class="hover:text-gray-900 transition-colors">GitHub</a>
+          <a href="../index.html" class="hover:text-gray-900 transition-colors">Home</a>
+          <a href="index.html" class="hover:text-gray-900 transition-colors">Blog</a>
+          <a href="https://github.com/kamathhrishi/sourcemapr/issues" class="hover:text-gray-900 transition-colors">Issues</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("y").textContent = new Date().getFullYear();
+
+    // Fetch GitHub stars
+    fetch('https://api.github.com/repos/kamathhrishi/sourcemapr')
+      .then(res => res.json())
+      .then(data => {
+        const stars = data.stargazers_count;
+        if (stars >= 50) {
+          document.getElementById('star-count').textContent = stars >= 1000 ? (stars / 1000).toFixed(1) + 'k' : stars;
+          document.getElementById('star-count').classList.remove('hidden');
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
+

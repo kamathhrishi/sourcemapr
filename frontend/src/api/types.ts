@@ -152,3 +152,45 @@ export interface AssignItemsRequest {
   retrieval_ids?: number[]
   llm_ids?: number[]
 }
+
+// Pipeline types for advanced RAG tracking
+export interface StageChunk {
+  id: number
+  stage_id: string
+  chunk_id: string
+  doc_id: string
+  text: string
+  input_rank: number | null
+  output_rank: number | null
+  input_score: number | null
+  output_score: number | null
+  source: string | null
+  status: 'kept' | 'filtered' | 'new'
+}
+
+export interface PipelineStage {
+  id: number
+  stage_id: string
+  pipeline_id: string
+  stage_type: 'query_expansion' | 'retrieval' | 'reranking' | 'compression' | 'filtering' | 'merge'
+  stage_name: string
+  stage_order: number
+  input_count: number
+  output_count: number
+  duration_ms: number
+  metadata: Record<string, unknown>
+  chunks: StageChunk[]
+}
+
+export interface Pipeline {
+  id: number
+  pipeline_id: string
+  experiment_id: number | null
+  query: string
+  total_duration_ms: number | null
+  num_stages: number
+  retrieval_id: string | null
+  llm_call_id: number | null
+  created_at: string
+  stages: PipelineStage[]
+}

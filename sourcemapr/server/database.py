@@ -188,6 +188,59 @@ def init_db():
             )
         """)
 
+        # Pipelines table - tracks complete RAG pipeline executions
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pipelines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pipeline_id TEXT UNIQUE NOT NULL,
+                experiment_id INTEGER,
+                query TEXT,
+                total_duration_ms REAL,
+                num_stages INTEGER DEFAULT 0,
+                retrieval_id TEXT,
+                llm_call_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE SET NULL
+            )
+        """)
+
+        # Pipeline stages table - each stage in the pipeline
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pipeline_stages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stage_id TEXT UNIQUE NOT NULL,
+                pipeline_id TEXT,
+                stage_type TEXT,
+                stage_name TEXT,
+                stage_order INTEGER,
+                input_count INTEGER DEFAULT 0,
+                output_count INTEGER DEFAULT 0,
+                duration_ms REAL,
+                metadata TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (pipeline_id) REFERENCES pipelines(pipeline_id) ON DELETE CASCADE
+            )
+        """)
+
+        # Stage chunks table - tracks chunks at each stage
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stage_chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stage_id TEXT,
+                chunk_id TEXT,
+                doc_id TEXT,
+                text TEXT,
+                input_rank INTEGER,
+                output_rank INTEGER,
+                input_score REAL,
+                output_score REAL,
+                source TEXT,
+                status TEXT DEFAULT 'kept',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (stage_id) REFERENCES pipeline_stages(stage_id) ON DELETE CASCADE
+            )
+        """)
+
         # Create indexes for common queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_traces_experiment ON traces(experiment_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_experiment ON documents(experiment_id)")
@@ -198,6 +251,9 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_calls_experiment ON llm_calls(experiment_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_retrievals_retrieval_id ON retrievals(retrieval_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_calls_retrieval_id ON llm_calls(retrieval_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pipelines_experiment ON pipelines(experiment_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_stages_pipeline ON pipeline_stages(pipeline_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_stage_chunks_stage ON stage_chunks(stage_id)")
 
         # Migration: Add retrieval_id column if it doesn't exist
         try:
@@ -854,12 +910,51 @@ def get_retrievals(experiment_id: int = None, limit: int = 100) -> List[Dict]:
             )
         result = []
         for row in cursor.fetchall():
-            data = json.loads(row['data']) if row['data'] else dict(row)
+            # Parse data JSON if it exists
+            if row['data']:
+                try:
+                    data = json.loads(row['data'])
+                except (json.JSONDecodeError, TypeError):
+                    data = {}
+            else:
+                data = {}
+            
+            # Ensure we have all required fields from the row
             data['id'] = row['id']
             data['experiment_id'] = row['experiment_id']
+            
+            # Parse results from the results column if not in data JSON
+            if 'results' not in data or not isinstance(data.get('results'), list):
+                if row['results']:
+                    try:
+                        data['results'] = json.loads(row['results'])
+                    except (json.JSONDecodeError, TypeError):
+                        data['results'] = []
+                else:
+                    data['results'] = []
+            
+            # Ensure results is always a list
+            if not isinstance(data.get('results'), list):
+                data['results'] = []
+            
+            # Ensure num_results matches actual results length if not set
+            if 'num_results' not in data or data.get('num_results') is None:
+                data['num_results'] = len(data['results'])
+            
+            # Include other fields from row if not in data
+            if 'query' not in data and row['query']:
+                data['query'] = row['query']
+            if 'duration_ms' not in data and row['duration_ms'] is not None:
+                data['duration_ms'] = row['duration_ms']
+            if 'trace_id' not in data and row['trace_id']:
+                data['trace_id'] = row['trace_id']
+            if 'retrieval_id' not in data and row['retrieval_id']:
+                data['retrieval_id'] = row['retrieval_id']
+            
             # Include created_at as timestamp if not already present
             if 'timestamp' not in data and row['created_at']:
                 data['timestamp'] = row['created_at']
+            
             result.append(data)
         return result
 
@@ -880,12 +975,51 @@ def get_llm_calls(experiment_id: int = None, limit: int = 100) -> List[Dict]:
             )
         result = []
         for row in cursor.fetchall():
-            data = json.loads(row['data']) if row['data'] else dict(row)
+            # Parse data JSON if it exists
+            if row['data']:
+                try:
+                    data = json.loads(row['data'])
+                except (json.JSONDecodeError, TypeError):
+                    data = {}
+            else:
+                data = {}
+            
+            # Ensure we have all required fields from the row
             data['id'] = row['id']
             data['experiment_id'] = row['experiment_id']
+            
+            # Parse messages from the messages column if not in data JSON
+            if 'messages' not in data or not isinstance(data.get('messages'), list):
+                if row['messages']:
+                    try:
+                        data['messages'] = json.loads(row['messages'])
+                    except (json.JSONDecodeError, TypeError):
+                        data['messages'] = None
+                else:
+                    data['messages'] = None
+            
+            # Include other fields from row if not in data
+            if 'model' not in data and row['model']:
+                data['model'] = row['model']
+            if 'prompt' not in data and row['prompt']:
+                data['prompt'] = row['prompt']
+            if 'response' not in data and row['response']:
+                data['response'] = row['response']
+            if 'duration_ms' not in data and row['duration_ms'] is not None:
+                data['duration_ms'] = row['duration_ms']
+            if 'input_type' not in data and row['input_type']:
+                data['input_type'] = row['input_type']
+            if 'status' not in data and row['status']:
+                data['status'] = row['status']
+            if 'trace_id' not in data and row['trace_id']:
+                data['trace_id'] = row['trace_id']
+            if 'retrieval_id' not in data and row['retrieval_id']:
+                data['retrieval_id'] = row['retrieval_id']
+            
             # Include created_at as timestamp if not already present
             if 'timestamp' not in data and row['created_at']:
                 data['timestamp'] = row['created_at']
+            
             result.append(data)
         return result
 
@@ -960,6 +1094,9 @@ def clear_all_data() -> None:
         cursor.execute("DELETE FROM embeddings")
         cursor.execute("DELETE FROM retrievals")
         cursor.execute("DELETE FROM llm_calls")
+        cursor.execute("DELETE FROM stage_chunks")
+        cursor.execute("DELETE FROM pipeline_stages")
+        cursor.execute("DELETE FROM pipelines")
         conn.commit()
 
 
@@ -995,6 +1132,9 @@ def reset_all_data() -> None:
         cursor.execute("DELETE FROM embeddings")
         cursor.execute("DELETE FROM retrievals")
         cursor.execute("DELETE FROM llm_calls")
+        cursor.execute("DELETE FROM stage_chunks")
+        cursor.execute("DELETE FROM pipeline_stages")
+        cursor.execute("DELETE FROM pipelines")
         # Also clear experiments (except Default)
         cursor.execute("DELETE FROM experiments WHERE name != 'Default'")
         # Reset Default experiment's framework
@@ -1155,6 +1295,152 @@ def store_parsed_batch(parsed_docs: list) -> None:
             ) for d in doc_list
         ])
         conn.commit()
+
+
+# ========== Pipeline Functions ==========
+
+def store_pipeline(data: Dict) -> None:
+    """Store a pipeline record."""
+    pipeline_data = data.get('data', {})
+    frameworks = pipeline_data.get('frameworks')
+
+    # Get experiment_id
+    if pipeline_data.get('experiment_name'):
+        experiment_id = get_or_create_experiment_by_name(pipeline_data['experiment_name'], frameworks)
+    else:
+        experiment_id = get_default_experiment_id()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO pipelines
+            (pipeline_id, experiment_id, query, total_duration_ms, num_stages, retrieval_id, llm_call_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            pipeline_data.get('pipeline_id'),
+            experiment_id,
+            pipeline_data.get('query'),
+            pipeline_data.get('total_duration_ms'),
+            pipeline_data.get('num_stages', 0),
+            pipeline_data.get('retrieval_id'),
+            pipeline_data.get('llm_call_id'),
+        ))
+        conn.commit()
+
+
+def store_pipeline_stage(data: Dict) -> None:
+    """Store a pipeline stage record."""
+    stage_data = data.get('data', {})
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO pipeline_stages
+            (stage_id, pipeline_id, stage_type, stage_name, stage_order, input_count, output_count, duration_ms, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            stage_data.get('stage_id'),
+            stage_data.get('pipeline_id'),
+            stage_data.get('stage_type'),
+            stage_data.get('stage_name'),
+            stage_data.get('stage_order'),
+            stage_data.get('input_count', 0),
+            stage_data.get('output_count', 0),
+            stage_data.get('duration_ms'),
+            json.dumps(stage_data.get('metadata', {})),
+        ))
+        conn.commit()
+
+
+def store_stage_chunks_batch(stage_id: str, chunks: List[Dict]) -> None:
+    """Store multiple stage chunks in a single transaction."""
+    if not chunks:
+        return
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.executemany("""
+            INSERT INTO stage_chunks
+            (stage_id, chunk_id, doc_id, text, input_rank, output_rank, input_score, output_score, source, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            (
+                stage_id,
+                c.get('chunk_id'),
+                c.get('doc_id'),
+                c.get('text', '')[:500],  # Truncate text
+                c.get('input_rank'),
+                c.get('output_rank'),
+                c.get('input_score'),
+                c.get('output_score'),
+                c.get('source'),
+                c.get('status', 'kept'),
+            ) for c in chunks
+        ])
+        conn.commit()
+
+
+def get_pipelines(experiment_id: int = None, limit: int = 100) -> List[Dict]:
+    """Get pipelines, optionally filtered by experiment."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if experiment_id:
+            cursor.execute(
+                "SELECT * FROM pipelines WHERE experiment_id = ? ORDER BY created_at DESC LIMIT ?",
+                (experiment_id, limit)
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM pipelines ORDER BY created_at DESC LIMIT ?",
+                (limit,)
+            )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_pipeline(pipeline_id: str) -> Optional[Dict]:
+    """Get a single pipeline with its stages and chunks."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Get pipeline
+        cursor.execute("SELECT * FROM pipelines WHERE pipeline_id = ?", (pipeline_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        pipeline = dict(row)
+
+        # Get stages
+        cursor.execute(
+            "SELECT * FROM pipeline_stages WHERE pipeline_id = ? ORDER BY stage_order",
+            (pipeline_id,)
+        )
+        stages = []
+        for stage_row in cursor.fetchall():
+            stage = dict(stage_row)
+            stage['metadata'] = json.loads(stage['metadata']) if stage['metadata'] else {}
+
+            # Get chunks for this stage
+            cursor.execute(
+                "SELECT * FROM stage_chunks WHERE stage_id = ? ORDER BY output_rank, input_rank",
+                (stage['stage_id'],)
+            )
+            stage['chunks'] = [dict(c) for c in cursor.fetchall()]
+            stages.append(stage)
+
+        pipeline['stages'] = stages
+        return pipeline
+
+
+def get_pipeline_by_retrieval(retrieval_id: str) -> Optional[Dict]:
+    """Get pipeline associated with a retrieval_id."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT pipeline_id FROM pipelines WHERE retrieval_id = ?", (retrieval_id,))
+        row = cursor.fetchone()
+        if row:
+            return get_pipeline(row['pipeline_id'])
+        return None
 
 
 # Initialize database on module import

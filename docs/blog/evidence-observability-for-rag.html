@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-VY7SRYYRCL"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-VY7SRYYRCL');
+  </script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Evidence Observability for RAG: Why Debugging RAG Pipelines Still Sucks | SourceMapR</title>
+  <meta name="description" content="Learn why RAG observability and evidence tracing are essential for debugging RAG pipelines. Discover how SourceMapR provides RAG debugging tools, evidence lineage, and trace viewers for LangChain and LlamaIndex." />
+  <meta name="keywords" content="RAG observability, evidence observability for RAG, RAG debugging tool, RAG evidence tracing, RAG pipeline debugger, LangChain observability, LlamaIndex observability, trace LLM answers to sources, chunking strategy debugging, SourceMapR" />
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Evidence Observability for RAG: Why Debugging RAG Pipelines Still Sucks" />
+  <meta property="og:description" content="Learn why RAG observability and evidence tracing are essential for debugging RAG pipelines. Discover how SourceMapR provides RAG debugging tools and evidence lineage." />
+  <meta property="og:url" content="https://kamathhrishi.github.io/sourcemapr/blog/evidence-observability-for-rag.html" />
+  
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Evidence Observability for RAG: Why Debugging RAG Pipelines Still Sucks" />
+  <meta name="twitter:description" content="Learn why RAG observability and evidence tracing are essential for debugging RAG pipelines." />
+  
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://kamathhrishi.github.io/sourcemapr/blog/evidence-observability-for-rag.html" />
+  
+  <!-- Structured Data for Article -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Evidence Observability for RAG: Why Debugging RAG Pipelines Still Sucks",
+    "description": "Learn why RAG observability and evidence tracing are essential for debugging RAG pipelines. Discover how SourceMapR provides RAG debugging tools, evidence lineage, and trace viewers for LangChain and LlamaIndex.",
+    "author": {
+      "@type": "Person",
+      "name": "SourceMapR Team"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "SourceMapR",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://kamathhrishi.github.io/sourcemapr/"
+      }
+    },
+    "datePublished": "2024-12-13",
+    "dateModified": "2024-12-13",
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": "https://kamathhrishi.github.io/sourcemapr/blog/evidence-observability-for-rag.html"
+    },
+    "keywords": "RAG observability, evidence observability for RAG, RAG debugging tool, RAG evidence tracing, LangChain observability, LlamaIndex observability, trace LLM answers to sources, chunking strategy debugging"
+  }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .gradient-text {
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .prose {
+      max-width: none;
+    }
+    .prose h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      color: #111827;
+    }
+    @media (min-width: 640px) {
+      .prose h2 {
+        font-size: 1.875rem;
+        margin-top: 3rem;
+        margin-bottom: 1.5rem;
+      }
+    }
+    .prose h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+      color: #1f2937;
+    }
+    @media (min-width: 640px) {
+      .prose h3 {
+        font-size: 1.5rem;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+      }
+    }
+    .prose h4 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-top: 1.25rem;
+      margin-bottom: 0.5rem;
+      color: #374151;
+    }
+    @media (min-width: 640px) {
+      .prose h4 {
+        font-size: 1.25rem;
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+      }
+    }
+    .prose p {
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+      line-height: 1.75;
+      color: #4b5563;
+      font-size: 1rem;
+    }
+    @media (min-width: 640px) {
+      .prose p {
+        margin-top: 1.25rem;
+        margin-bottom: 1.25rem;
+        line-height: 1.8;
+        font-size: 1.0625rem;
+      }
+    }
+    .prose ul, .prose ol {
+      margin-top: 1.25rem;
+      margin-bottom: 1.25rem;
+      padding-left: 1.75rem;
+    }
+    .prose li {
+      margin-top: 0.75rem;
+      margin-bottom: 0.75rem;
+      color: #4b5563;
+      line-height: 1.75;
+    }
+    .prose code {
+      background-color: #f3f4f6;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.375rem;
+      font-size: 0.9em;
+      color: #1f2937;
+      font-weight: 500;
+      border: 1px solid #e5e7eb;
+    }
+    .prose pre {
+      background-color: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 0.75rem;
+      padding: 1rem;
+      overflow-x: auto;
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (min-width: 640px) {
+      .prose pre {
+        padding: 1.5rem;
+        margin-top: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+    }
+    .prose pre code {
+      background: transparent;
+      padding: 0;
+      color: #e5e7eb;
+      font-weight: 400;
+      font-size: 0.95em;
+      border: none;
+    }
+    .prose blockquote {
+      border-left: 4px solid #818cf8;
+      padding-left: 1.5rem;
+      margin-left: 0;
+      margin-top: 1.5rem;
+      margin-bottom: 1.5rem;
+      font-style: italic;
+      color: #6b7280;
+      background-color: #f9fafb;
+      padding: 1rem 1.5rem;
+      border-radius: 0.5rem;
+    }
+    .prose table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .prose table th,
+    .prose table td {
+      border: 1px solid #e5e7eb;
+      padding: 0.75rem;
+      text-align: left;
+    }
+    .prose table th {
+      background-color: #f3f4f6;
+      font-weight: 600;
+      color: #111827;
+    }
+    .prose table td {
+      color: #4b5563;
+    }
+    .prose strong {
+      font-weight: 600;
+      color: #111827;
+    }
+    .prose em {
+      font-style: italic;
+      color: #6b7280;
+    }
+    .prose a {
+      color: #6366f1;
+      text-decoration: underline;
+      transition: all 0.2s;
+    }
+    .prose a:hover {
+      color: #4f46e5;
+    }
+  </style>
+</head>
+
+<body class="bg-white text-gray-900 antialiased">
+  <!-- Navigation -->
+  <header class="sticky top-0 z-50 border-b border-gray-200 bg-white/80 backdrop-blur-sm">
+    <nav class="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
+      <div class="flex items-center gap-3">
+        <a href="../index.html" class="flex items-center gap-3">
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
+            <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <circle cx="10" cy="13" r="2" fill="currentColor" stroke="none"/>
+              <circle cx="16" cy="16" r="2" fill="currentColor" stroke="none"/>
+              <path d="M10 13 L13 14.5 L16 16" stroke-width="1.5"/>
+              <circle cx="8" cy="18" r="1.5" fill="currentColor" stroke="none"/>
+              <path d="M10 13 L8 18" stroke-width="1.5"/>
+            </svg>
+          </div>
+          <span class="text-xl font-semibold">SourceMapR</span>
+        </a>
+      </div>
+
+      <div class="hidden items-center gap-8 text-sm font-medium text-gray-600 md:flex">
+        <a href="../index.html#features" class="hover:text-gray-900 transition-colors">Features</a>
+        <a href="../index.html#frameworks" class="hover:text-gray-900 transition-colors">Frameworks</a>
+        <a href="../index.html#how-it-works" class="hover:text-gray-900 transition-colors">How it works</a>
+        <a href="index.html" class="text-gray-900 font-medium">Blog</a>
+        <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="hover:text-gray-900 transition-colors">Docs</a>
+      </div>
+
+      <div class="flex items-center gap-2 sm:gap-3">
+        <a href="https://github.com/kamathhrishi/sourcemapr" class="group hidden sm:inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+          <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          <span id="star-text">Star</span>
+          <span id="star-count" class="hidden rounded-md bg-gray-100 px-1.5 py-0.5 text-xs font-semibold"></span>
+        </a>
+        <a href="../index.html#get-started" class="rounded-lg bg-gray-900 px-3 sm:px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors">
+          Get started
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Article Content -->
+  <article class="relative">
+    <div class="mx-auto max-w-4xl px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
+      <!-- Back link -->
+      <div class="mb-8">
+        <a href="index.html" class="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors group">
+          <svg class="h-4 w-4 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back to Blog
+        </a>
+      </div>
+
+      <!-- Article Header -->
+      <header class="mb-8 sm:mb-12 rounded-xl bg-white p-6 sm:p-8 shadow-sm border border-gray-200">
+        <div class="mb-4 flex items-center gap-2">
+          <span class="rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700">
+            RAG
+          </span>
+          <span class="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
+            Observability
+          </span>
+        </div>
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900 mb-3 sm:mb-4 sm:text-4xl lg:text-5xl">
+          Evidence Observability for RAG: Why Debugging RAG Pipelines Still Sucks
+        </h1>
+        <p class="text-base sm:text-lg text-gray-600 leading-relaxed">
+          Understanding the problem: why traditional logging fails for RAG systems and what evidence observability means.
+        </p>
+      </header>
+
+      <!-- Article Body -->
+      <div class="prose rounded-xl bg-white p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200">
+        <p>When I first started building retrieval-augmented generation (RAG) pipelines, I assumed debugging them would feel like debugging any other ML workflow: print statements, logs, maybe a trace viewer. I was wrong.</p>
+
+        <p>The deeper I got, the more I realized something wasn't adding up: I could see the input, I could see the output, but I had absolutely no idea what happened in between. And in RAG, the "in-between" is the whole game.</p>
+
+        <p>Traditional agent and LLM observability tools show you retrieved chunks, but they don't show you where those chunks came from - the original documents, the parsed data, or how the documents were processed. This article maps the actual debugging pain points in RAG development and explains what <strong>evidence observability for RAG</strong> means: the ability to see the complete pipeline from raw documents through parsing, processing, chunking, retrieval, and finally to the answer. If you're building RAG systems with LangChain or LlamaIndex and struggling with debugging, this article will show you why traditional observability fails and what's needed to solve the problem. For a practical solution, see <a href="how-sourcemapr-solves-rag-observability.html" class="text-indigo-600 hover:text-indigo-700">How SourceMapR Solves RAG Observability</a>.</p>
+
+        <h2>The Real Problem: Why RAG Pipeline Debugging Feels Like Blindfolded Surgery</h2>
+
+        <p>A typical RAG pipeline looks clean when diagrammed:</p>
+
+        <pre><code>parse → chunk → embed → store → retrieve → rerank → prompt → generate</code></pre>
+
+        <p>In practice, debugging looks like this:</p>
+
+        <ul>
+          <li><code>print()</code> everywhere</li>
+          <li>rerunning queries manually</li>
+          <li>guessing why hallucinations happen</li>
+          <li>copy-pasting chunks into the model</li>
+          <li>inspecting vector DB calls</li>
+          <li>trying different chunk sizes</li>
+          <li>hoping it works this time</li>
+        </ul>
+
+        <p>Most failures boil down to the same question: <strong>"What did the model actually see, and where did it come from?"</strong> Traditional observability tools show you retrieved chunks, but they don't show you the original documents those chunks came from, how those documents were parsed, or what happened during processing. You can't trace LLM answers back to the raw documents, you can't see the intermediate steps in your RAG pipeline, and you can't verify grounding. This is the core problem that evidence observability for RAG solves.</p>
+
+        <h2>Why Traditional Logging Isn't Enough for RAG Observability</h2>
+
+        <p>Frameworks like LangChain and LlamaIndex give you some visibility:</p>
+
+        <ul>
+          <li>You can log prompts</li>
+          <li>You can inspect retrieval results</li>
+          <li>You can print metadata</li>
+          <li>You can enable debug mode</li>
+        </ul>
+
+        <p>But RAG debugging needs more than logs. What feels missing in real workflows:</p>
+
+        <h3>1. Evidence is scattered across subsystems</h3>
+
+        <p>Retriever logs here, prompt logs there, chunk processing somewhere else. There's no unified view of what happened during a single request.</p>
+
+        <h3>2. No linear "story" of the request</h3>
+
+        <p>You want to see the whole movie, not random frames. Traditional logging gives you fragments, but you need the complete narrative from document to answer.</p>
+
+        <h3>3. No connection between response and evidence</h3>
+
+        <p>If the model hallucinated, you can't tell if retrieval was wrong, chunking was wrong, or the prompt was wrong. There's no way to trace the failure back to its source.</p>
+
+        <h3>4. No connection to original documents and parsed data</h3>
+
+        <p>Traditional observability tools show you retrieved chunks, but not where they came from. You can't see the original documents, the parsed data from those documents, or how documents were processed. Especially for PDFs, context is everything - you need to see where chunks came from in the original document, not just the extracted text.</p>
+
+        <h3>5. No easy way to compare two different attempts</h3>
+
+        <p>Changing <code>k</code>, chunk size, embedding model, or retriever should be observable, but without a structured view, everything feels like guesswork. This is where the idea of <strong>evidence observability</strong> clicked for me.</p>
+
+        <h2>What Is Evidence Observability for RAG?</h2>
+
+        <p>Evidence observability for RAG is the ability to trace every RAG answer back to the exact document chunks - and more importantly, back to the original documents and parsed data - that produced it, along with complete lineage showing all intermediate steps in the RAG pipeline. Think of it as a complete audit trail that shows the entire journey from raw documents to final answer.</p>
+
+        <p>Unlike traditional agent and LLM observability tools that only show retrieved chunks, evidence observability maps answers to original documents, parsed data, and every intermediate step. This means you can see:</p>
+
+        <ul>
+          <li><strong>Original documents</strong> - See the raw documents (PDFs, text files, etc.) that were loaded into your pipeline</li>
+          <li><strong>Parsed data</strong> - View exactly what was extracted from each document during parsing, with page numbers and text length</li>
+          <li><strong>Document processing</strong> - Understand how documents were processed and transformed</li>
+          <li><strong>Chunk creation lineage</strong> - See how parsed text was split into chunks, with character positions and metadata</li>
+          <li><strong>Embedding details</strong> - Track which embedding model was used, vector dimensions, and processing time</li>
+          <li><strong>Retrieval results with similarity scores</strong> - See exactly which chunks were retrieved and why, with similarity score debugging</li>
+          <li><strong>Final prompt construction</strong> - View the exact prompt sent to the LLM, including all context</li>
+          <li><strong>Model response with metadata</strong> - Complete LLM tracing with token counts, latency, and response text</li>
+          <li><strong>Complete evidence lineage</strong> - Click any chunk to see it highlighted in the original document, tracing the full path from raw document → parsed data → chunk → retrieval → answer</li>
+        </ul>
+
+        <p>This isn't just logging or traditional observability - it's a complete RAG trace viewer that shows the entire pipeline from raw documents through all intermediate steps to the final answer. You can see not just what chunks were retrieved, but where they came from in the original documents and how they were created.</p>
+
+        <h2>Conclusion: Why Evidence Observability for RAG Matters</h2>
+
+        <p>RAG systems are complex. They involve multiple stages - document loading, parsing, chunking, embedding, retrieval, and generation - and failures can occur at any point. Traditional logging gives you fragments, but evidence observability gives you the complete picture.</p>
+
+        <p>Without evidence observability, you're debugging blindfolded. Traditional observability tools show you retrieved chunks, but they don't show you the original documents, the parsed data, or the intermediate processing steps. You can't trace LLM answers back to raw documents, you can't see how documents were processed, and you can't verify grounding systematically. Evidence observability isn't optional - it's essential for building reliable RAG systems that provide complete transparency from raw documents to final answers.</p>
+
+        <p>If you're ready to implement evidence observability in your RAG pipeline, check out <a href="how-sourcemapr-solves-rag-observability.html" class="text-indigo-600 hover:text-indigo-700">How SourceMapR Solves RAG Observability</a> - a practical guide to adding RAG observability with just two lines of code.</p>
+      </div>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 bg-white py-8 sm:py-12">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-xs sm:text-sm text-gray-600">
+        <div>© <span id="y"></span> SourceMapR — Evidence observability for RAG.</div>
+        <div class="flex flex-wrap gap-3 sm:gap-6">
+          <a href="https://github.com/kamathhrishi/sourcemapr" class="hover:text-gray-900 transition-colors">GitHub</a>
+          <a href="../index.html" class="hover:text-gray-900 transition-colors">Home</a>
+          <a href="index.html" class="hover:text-gray-900 transition-colors">Blog</a>
+          <a href="https://github.com/kamathhrishi/sourcemapr/issues" class="hover:text-gray-900 transition-colors">Issues</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("y").textContent = new Date().getFullYear();
+
+    // Fetch GitHub stars
+    fetch('https://api.github.com/repos/kamathhrishi/sourcemapr')
+      .then(res => res.json())
+      .then(data => {
+        const stars = data.stargazers_count;
+        if (stars >= 50) {
+          document.getElementById('star-count').textContent = stars >= 1000 ? (stars / 1000).toFixed(1) + 'k' : stars;
+          document.getElementById('star-count').classList.remove('hidden');
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>

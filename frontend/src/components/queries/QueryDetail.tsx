@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SourceSidebar } from './SourceSidebar'
+import { PipelineFlow } from './PipelineFlow'
 import { useAppStore } from '@/store'
 import { formatLatency, formatTime, getLatencyColor } from '@/lib/utils'
 import type { DashboardData, LLMCall, RetrievalResult } from '@/api/types'
@@ -221,12 +222,16 @@ export function QueryDetail({ data }: QueryDetailProps) {
   })
 
   const retrieval = useMemo(() => {
-    return data.retrievals.find((r) => r.id === Number(queryId))
-  }, [data.retrievals, queryId])
+    if (!data?.retrievals || !Array.isArray(data.retrievals)) return undefined
+    if (!queryId) return undefined
+    const id = Number(queryId)
+    if (isNaN(id)) return undefined
+    return data.retrievals.find((r) => r.id === id)
+  }, [data?.retrievals, queryId])
 
   // Find associated LLM call by retrieval_id (direct link)
   const llmCall = useMemo(() => {
-    if (!retrieval) return null
+    if (!retrieval || !data?.llm_calls || !Array.isArray(data.llm_calls)) return null
 
     // Primary: Match by retrieval_id (proper linking)
     if (retrieval.retrieval_id) {
@@ -241,20 +246,34 @@ export function QueryDetail({ data }: QueryDetailProps) {
     }
 
     // Last resort: timestamp proximity (for old data without retrieval_id)
-    const retrievalTime = new Date(retrieval.timestamp).getTime()
-    const closestCall = data.llm_calls
-      .filter((l) => {
-        const llmTime = new Date(l.timestamp).getTime()
-        return llmTime > retrievalTime && llmTime - retrievalTime < 10000
-      })
-      .sort((a, b) => {
-        const aTime = new Date(a.timestamp).getTime() - retrievalTime
-        const bTime = new Date(b.timestamp).getTime() - retrievalTime
-        return aTime - bTime
-      })[0]
+    try {
+      const retrievalTime = new Date(retrieval.timestamp).getTime()
+      if (isNaN(retrievalTime)) return null
+      
+      const closestCall = data.llm_calls
+        .filter((l) => {
+          try {
+            const llmTime = new Date(l.timestamp).getTime()
+            return !isNaN(llmTime) && llmTime > retrievalTime && llmTime - retrievalTime < 10000
+          } catch {
+            return false
+          }
+        })
+        .sort((a, b) => {
+          try {
+            const aTime = new Date(a.timestamp).getTime() - retrievalTime
+            const bTime = new Date(b.timestamp).getTime() - retrievalTime
+            return aTime - bTime
+          } catch {
+            return 0
+          }
+        })[0]
 
-    return closestCall || null
-  }, [data.llm_calls, retrieval])
+      return closestCall || null
+    } catch {
+      return null
+    }
+  }, [data?.llm_calls, retrieval])
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }))
@@ -298,6 +317,35 @@ export function QueryDetail({ data }: QueryDetailProps) {
     return []
   }
 
+  // Validate data and queryId after all hooks
+  if (!data || !data.retrievals || !Array.isArray(data.retrievals)) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p style={{ color: 'var(--text-secondary)' }}>Loading data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!queryId || isNaN(Number(queryId))) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p style={{ color: 'var(--text-secondary)' }}>Invalid query ID</p>
+            <Button variant="outline" className="mt-4" onClick={handleBack}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Queries
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   if (!retrieval) {
     return (
       <div className="p-6">
@@ -316,11 +364,28 @@ export function QueryDetail({ data }: QueryDetailProps) {
 
   // Show first 10 chunks by default, or all if showAllChunks is true
   const INITIAL_CHUNKS = 10
+  const results = retrieval.results || []
   const displayedChunks = showAllChunks
-    ? retrieval.results
-    : retrieval.results.slice(0, INITIAL_CHUNKS)
+    ? results
+    : results.slice(0, INITIAL_CHUNKS)
 
-  const messages = llmCall ? parseMessages(llmCall) : []
+  const messages = llmCall ? (parseMessages(llmCall) || []) : []
+
+  // Debug logging
+  if (typeof window !== 'undefined') {
+    console.log('[QueryDetail] Rendering with:', {
+      queryId,
+      retrieval: retrieval ? { id: retrieval.id, hasResults: !!retrieval.results, resultsLength: retrieval.results?.length } : null,
+      llmCall: llmCall ? { id: llmCall.id, hasResponse: !!llmCall.response } : null,
+      dataKeys: data ? Object.keys(data) : null,
+    })
+  }
+
+  // Safety checks for retrieval properties
+  const numResults = retrieval?.num_results ?? results.length ?? 0
+  const durationMs = retrieval?.duration_ms ?? 0
+  const timestamp = retrieval?.timestamp ?? new Date().toISOString()
+  const query = retrieval?.query ?? ''
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -337,14 +402,14 @@ export function QueryDetail({ data }: QueryDetailProps) {
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="gap-1 px-2 py-0.5 text-xs">
                 <Layers className="w-3 h-3" />
-                {retrieval.num_results} chunks
+                {numResults} chunks
               </Badge>
               <Badge variant="outline" className="gap-1 px-2 py-0.5 text-xs">
                 <Clock className="w-3 h-3" />
-                {formatLatency(retrieval.duration_ms)}
+                {formatLatency(durationMs)}
               </Badge>
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {formatTime(retrieval.timestamp)}
+                {formatTime(timestamp)}
               </span>
             </div>
           </div>
@@ -359,10 +424,19 @@ export function QueryDetail({ data }: QueryDetailProps) {
             </CardHeader>
             <CardContent className="px-4 pb-4">
               <p className="text-base leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-                {retrieval.query}
+                {query}
               </p>
             </CardContent>
           </Card>
+
+          {/* Pipeline Flow */}
+          {retrieval?.retrieval_id && (
+            <PipelineFlow
+              retrievalId={retrieval.retrieval_id}
+              data={data}
+              onViewSource={handleViewSource}
+            />
+          )}
 
           {/* LLM Call Section */}
           {llmCall ? (
@@ -585,7 +659,7 @@ export function QueryDetail({ data }: QueryDetailProps) {
             <CardHeader className="pb-2 pt-4 px-4">
               <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                 <Layers className="w-4 h-4" />
-                Source Attribution ({retrieval.results.length} chunks retrieved)
+                Source Attribution ({results.length} chunks retrieved)
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4">
@@ -614,7 +688,7 @@ export function QueryDetail({ data }: QueryDetailProps) {
                   )
                 )}
 
-                {retrieval.results.length > INITIAL_CHUNKS && (
+                {results.length > INITIAL_CHUNKS && (
                   <Button
                     variant="outline"
                     className="w-full h-10 text-sm"
@@ -628,7 +702,7 @@ export function QueryDetail({ data }: QueryDetailProps) {
                     ) : (
                       <>
                         <ChevronDown className="w-4 h-4 mr-2" />
-                        Show All ({retrieval.results.length - INITIAL_CHUNKS} more)
+                        Show All ({results.length - INITIAL_CHUNKS} more)
                       </>
                     )}
                   </Button>

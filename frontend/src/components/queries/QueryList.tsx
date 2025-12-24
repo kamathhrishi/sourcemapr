@@ -20,25 +20,45 @@ export function QueryList({ data }: QueryListProps) {
 
   // Combine retrievals with LLM calls to show queries
   const queries = useMemo(() => {
+    if (!data?.retrievals || !Array.isArray(data.retrievals)) {
+      return []
+    }
+    const llmCalls = data.llm_calls || []
     return data.retrievals.map((r) => {
-      const llmCall = data.llm_calls.find((l) => l.trace_id === r.trace_id)
+      const llmCall = llmCalls.find((l) => l.trace_id === r.trace_id)
       return {
         ...r,
         llmCall,
       }
-    }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-  }, [data.retrievals, data.llm_calls])
+    }).sort((a, b) => {
+      try {
+        const aTime = new Date(a.timestamp).getTime()
+        const bTime = new Date(b.timestamp).getTime()
+        if (isNaN(aTime) || isNaN(bTime)) return 0
+        return bTime - aTime
+      } catch {
+        return 0
+      }
+    })
+  }, [data?.retrievals, data?.llm_calls])
 
   // Filter
   const filteredQueries = useMemo(() => {
+    if (!Array.isArray(queries)) return []
     if (!searchTerm) return queries
     const term = searchTerm.toLowerCase()
-    return queries.filter((q) => q.query.toLowerCase().includes(term))
+    return queries.filter((q) => {
+      try {
+        return q?.query?.toLowerCase().includes(term) ?? false
+      } catch {
+        return false
+      }
+    })
   }, [queries, searchTerm])
 
   // Paginate
-  const totalPages = Math.ceil(filteredQueries.length / PAGE_SIZE)
-  const paginatedQueries = filteredQueries.slice(
+  const totalPages = Math.ceil((filteredQueries?.length || 0) / PAGE_SIZE)
+  const paginatedQueries = (filteredQueries || []).slice(
     (queriesPage - 1) * PAGE_SIZE,
     queriesPage * PAGE_SIZE
   )
@@ -73,7 +93,7 @@ export function QueryList({ data }: QueryListProps) {
               className="text-xs px-1.5 py-0.5 rounded"
               style={{ background: 'var(--background-subtle)', color: 'var(--text-muted)' }}
             >
-              {queries.length}
+              {queries?.length || 0}
             </span>
           </div>
           <div className="relative">
@@ -95,7 +115,7 @@ export function QueryList({ data }: QueryListProps) {
         </div>
 
         {/* Table */}
-        {paginatedQueries.length > 0 ? (
+        {paginatedQueries && paginatedQueries.length > 0 ? (
           <>
             <table className="w-full">
               <thead>
@@ -138,7 +158,7 @@ export function QueryList({ data }: QueryListProps) {
                     key={query.id}
                     className="cursor-pointer transition-colors"
                     style={{
-                      borderBottom: idx < paginatedQueries.length - 1 ? '1px solid var(--border)' : 'none',
+                      borderBottom: idx < (paginatedQueries?.length || 0) - 1 ? '1px solid var(--border)' : 'none',
                     }}
                     onClick={() => handleQueryClick(query.id)}
                     onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-hover)'}
@@ -209,7 +229,7 @@ export function QueryList({ data }: QueryListProps) {
                 style={{ borderTop: '1px solid var(--border)' }}
               >
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {(queriesPage - 1) * PAGE_SIZE + 1}–{Math.min(queriesPage * PAGE_SIZE, filteredQueries.length)} of {filteredQueries.length}
+                  {(queriesPage - 1) * PAGE_SIZE + 1}–{Math.min(queriesPage * PAGE_SIZE, filteredQueries?.length || 0)} of {filteredQueries?.length || 0}
                 </span>
                 <div className="flex items-center gap-1">
                   <Button

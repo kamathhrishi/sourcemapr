@@ -248,6 +248,15 @@ def _process_event(data: dict):
     elif event_type == 'llm':
         print(f"[SourcemapR] LLM call: {data.get('data', {}).get('model', 'N/A')}")
         db.store_llm_call(data)
+    elif event_type == 'pipeline':
+        db.store_pipeline(data)
+    elif event_type == 'pipeline_stage':
+        stage_data = data.get('data', {})
+        chunks = stage_data.pop('chunks', [])
+        db.store_pipeline_stage(data)
+        if chunks:
+            db.store_stage_chunks_batch(stage_data.get('stage_id'), chunks)
+        print(f"[SourcemapR] Pipeline stage: {stage_data.get('stage_name')} ({stage_data.get('input_count', 0)} → {stage_data.get('output_count', 0)})")
 
 
 # ========== Data Retrieval Endpoints ==========
@@ -378,6 +387,32 @@ async def get_retrievals_list(experiment_id: Optional[int] = Query(None)):
 async def get_llm_calls_list(experiment_id: Optional[int] = Query(None)):
     """Get recent LLM calls."""
     return db.get_llm_calls(experiment_id, limit=100)
+
+
+# ========== Pipeline Endpoints ==========
+
+@app.get("/api/pipelines")
+async def get_pipelines_list(experiment_id: Optional[int] = Query(None)):
+    """Get all pipelines for an experiment."""
+    return db.get_pipelines(experiment_id, limit=100)
+
+
+@app.get("/api/pipelines/{pipeline_id}")
+async def get_pipeline_detail(pipeline_id: str):
+    """Get a specific pipeline with all its stages and chunks."""
+    pipeline = db.get_pipeline(pipeline_id)
+    if not pipeline:
+        return {"error": "Pipeline not found"}
+    return pipeline
+
+
+@app.get("/api/retrievals/{retrieval_id}/pipeline")
+async def get_retrieval_pipeline(retrieval_id: str):
+    """Get the pipeline associated with a retrieval."""
+    pipeline = db.get_pipeline_by_retrieval(retrieval_id)
+    if not pipeline:
+        return {"error": "No pipeline found for this retrieval"}
+    return pipeline
 
 
 @app.post("/api/clear")
