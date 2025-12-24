@@ -121,13 +121,86 @@
             Learn more
             </a>
           </div>
-              </div>
+          </div>
 
       <!-- Product Screenshot -->
       <div class="mt-12 sm:mt-16">
         <div class="mx-auto max-w-5xl rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:p-8 shadow-2xl">
           <img src="screenshot.png" alt="SourceMapR Dashboard" class="w-full h-auto rounded-xl shadow-lg" />
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Code Examples Section -->
+  <section class="bg-white py-12 sm:py-16 lg:py-24">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6">
+      <div class="mx-auto max-w-2xl text-center">
+        <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+          Add RAG Observability in Two Lines
+        </h2>
+        <p class="mt-4 text-lg text-gray-600">
+          Add SourceMapR to your existing LangChain or LlamaIndex pipeline. Your code stays the same — we provide RAG observability automatically.
+        </p>
+      </div>
+
+      <!-- Tab buttons -->
+      <div class="mt-8 sm:mt-12 flex justify-center gap-2">
+        <button id="tab-llamaindex" onclick="showTab('llamaindex')" class="inline-flex items-center gap-2 rounded-lg bg-purple-100 px-4 py-2 text-sm font-medium text-purple-700 transition hover:bg-purple-200">
+          <img src="https://avatars.githubusercontent.com/u/130722866?s=20" alt="LlamaIndex" class="h-4 w-4 rounded-sm" />
+          LlamaIndex
+        </button>
+        <button id="tab-langchain" onclick="showTab('langchain')" class="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200">
+          <img src="https://avatars.githubusercontent.com/u/126733545?s=20" alt="LangChain" class="h-4 w-4 rounded-sm" />
+          LangChain
+        </button>
+      </div>
+
+      <!-- LlamaIndex code -->
+      <div id="code-llamaindex" class="mt-4 sm:mt-6 rounded-xl border border-gray-200 bg-gray-900 p-4 sm:p-6 shadow-lg">
+        <pre class="overflow-x-auto text-xs sm:text-sm text-gray-200"><code><span class="text-gray-500"># pip install sourcemapr llama-index</span>
+
+<span class="text-indigo-300">from</span> sourcemapr <span class="text-indigo-300">import</span> init_tracing, stop_tracing
+init_tracing(endpoint=<span class="text-emerald-300">"http://localhost:5000"</span>)
+
+<span class="text-gray-500"># Your existing LlamaIndex code — unchanged</span>
+<span class="text-indigo-300">from</span> llama_index.core <span class="text-indigo-300">import</span> SimpleDirectoryReader, VectorStoreIndex
+
+documents = SimpleDirectoryReader(<span class="text-emerald-300">"./papers"</span>).load_data()
+index = VectorStoreIndex.from_documents(documents)
+
+response = index.as_query_engine().query(<span class="text-emerald-300">"What is attention?"</span>)
+print(response)
+
+stop_tracing()</code></pre>
+      </div>
+
+      <!-- LangChain code -->
+      <div id="code-langchain" class="mt-4 sm:mt-6 hidden rounded-xl border border-gray-200 bg-gray-900 p-4 sm:p-6 shadow-lg">
+        <pre class="overflow-x-auto text-xs sm:text-sm text-gray-200"><code><span class="text-gray-500"># pip install sourcemapr langchain langchain-community</span>
+
+<span class="text-indigo-300">from</span> sourcemapr <span class="text-indigo-300">import</span> init_tracing, stop_tracing
+init_tracing(endpoint=<span class="text-emerald-300">"http://localhost:5000"</span>)
+
+<span class="text-gray-500"># Your existing LangChain code — unchanged</span>
+<span class="text-indigo-300">from</span> langchain_community.document_loaders <span class="text-indigo-300">import</span> PyPDFLoader
+<span class="text-indigo-300">from</span> langchain_text_splitters <span class="text-indigo-300">import</span> RecursiveCharacterTextSplitter
+<span class="text-indigo-300">from</span> langchain_community.vectorstores <span class="text-indigo-300">import</span> FAISS
+
+loader = PyPDFLoader(<span class="text-emerald-300">"./papers/attention.pdf"</span>)
+documents = loader.load()
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=<span class="text-orange-300">512</span>)
+chunks = splitter.split_documents(documents)
+
+vectorstore = FAISS.from_documents(chunks, embeddings)
+results = vectorstore.similarity_search(<span class="text-emerald-300">"What is attention?"</span>)
+
+stop_tracing()</code></pre>
+      </div>
+
+      <div class="mt-6 text-center text-sm text-gray-600">
+        Then open <code class="rounded bg-gray-100 px-2 py-1 text-xs font-mono">http://localhost:5000</code> to see the full evidence lineage.
       </div>
     </div>
   </section>
@@ -142,7 +215,7 @@
         <p class="mt-4 text-lg text-gray-600">
           Everything you need to debug and understand your RAG pipeline
         </p>
-          </div>
+      </div>
 
       <div class="mt-8 sm:mt-12 lg:mt-16 grid gap-6 sm:gap-8 md:grid-cols-2 lg:grid-cols-3">
         <!-- Feature 1 -->
@@ -583,6 +656,26 @@ stop_tracing()</code></pre>
         document.getElementById('tab-llamaindex').className = 'inline-flex items-center gap-2 rounded-lg bg-purple-100 px-4 py-2 text-sm font-medium text-purple-700 transition hover:bg-purple-200';
       } else {
         document.getElementById('tab-langchain').className = 'inline-flex items-center gap-2 rounded-lg bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-200';
+      }
+    }
+
+    function showQuickTab(tab) {
+      // Hide all quick code blocks
+      document.getElementById('quick-code-llamaindex').classList.add('hidden');
+      document.getElementById('quick-code-langchain').classList.add('hidden');
+
+      // Reset all tab styles
+      document.getElementById('quick-tab-llamaindex').className = 'inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200';
+      document.getElementById('quick-tab-langchain').className = 'inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200';
+
+      // Show selected tab
+      document.getElementById('quick-code-' + tab).classList.remove('hidden');
+
+      // Style active tab
+      if (tab === 'llamaindex') {
+        document.getElementById('quick-tab-llamaindex').className = 'inline-flex items-center gap-1.5 rounded-lg bg-purple-100 px-3 py-1.5 text-xs font-medium text-purple-700 transition hover:bg-purple-200';
+      } else {
+        document.getElementById('quick-tab-langchain').className = 'inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-200';
       }
     }
   </script>
