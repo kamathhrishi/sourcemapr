@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sourcemapr"
-version = "0.1.0"
+version = "0.1.1"
 description = "RAG Observability Platform - Trace, debug and understand your RAG pipelines"
 readme = "README.md"
 license = "MIT"
