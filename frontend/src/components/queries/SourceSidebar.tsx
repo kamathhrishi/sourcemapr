@@ -70,7 +70,7 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
   const currentPageText = pages[safePage - 1] ?? ''
 
   // Extract significant words from text (ignoring common stop words)
-  const getSignificantWords = useCallback((text: string): Set<string> => {
+  const getSignificantWords = useCallback((text: string): Map<string, number> => {
     const stopWords = new Set([
       'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
       'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had',
@@ -82,54 +82,157 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
       'very', 'just', 'also', 'now', 'here', 'there', 'then', 'if', 'else', 'use', 'used',
     ])
 
+    const wordCounts = new Map<string, number>()
+    // Include shorter words (2+ chars) for better matching
     const words = text.toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
-      .filter(w => w.length > 3 && !stopWords.has(w))
+      .filter(w => w.length >= 2 && !stopWords.has(w))
 
-    return new Set(words)
+    for (const word of words) {
+      wordCounts.set(word, (wordCounts.get(word) || 0) + 1)
+    }
+
+    return wordCounts
   }, [])
 
-  // Find the region in text with the most matching words from chunk
-  const findBestMatchingRegion = useCallback((text: string, chunkWords: Set<string>): { start: number; end: number } | null => {
-    if (chunkWords.size === 0) return null
-
-    const textLower = text.toLowerCase()
-    const windowSize = 500 // Look for ~500 char regions
-    const step = 100 // Slide by 100 chars
-
-    let bestStart = 0
-    let bestEnd = 0
-    let bestScore = 0
-
-    for (let i = 0; i < text.length - 100; i += step) {
-      const regionEnd = Math.min(i + windowSize, text.length)
-      const region = textLower.slice(i, regionEnd)
-      const regionWords = region.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
-
-      // Count how many chunk words appear in this region
-      let score = 0
-      for (const word of regionWords) {
-        if (chunkWords.has(word)) score++
+  // Split text into sentences for better matching
+  const splitIntoSentences = useCallback((text: string): { text: string; start: number; end: number }[] => {
+    const sentences: { text: string; start: number; end: number }[] = []
+    // Match sentences ending with . ! ? or newlines, but not abbreviations like "e.g." or "i.e."
+    const sentenceRegex = /[^.!?\n]+(?:[.!?]+|\n|$)/g
+    let match
+    while ((match = sentenceRegex.exec(text)) !== null) {
+      const sentenceText = match[0].trim()
+      if (sentenceText.length > 10) { // Skip very short fragments
+        sentences.push({
+          text: sentenceText,
+          start: match.index,
+          end: match.index + match[0].length
+        })
       }
+    }
+    return sentences
+  }, [])
 
-      if (score > bestScore) {
-        bestScore = score
-        bestStart = i
-        bestEnd = regionEnd
+  // Calculate similarity score between chunk words and a text region
+  const calculateSimilarityScore = useCallback((
+    regionText: string,
+    chunkWords: Map<string, number>
+  ): number => {
+    if (chunkWords.size === 0) return 0
+
+    const regionWordsLower = regionText.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 2)
+
+    let matchedWords = 0
+    let totalWeight = 0
+    const matchedSet = new Set<string>()
+
+    for (const word of regionWordsLower) {
+      if (chunkWords.has(word) && !matchedSet.has(word)) {
+        matchedSet.add(word)
+        matchedWords++
+        // Weight longer words more heavily
+        totalWeight += Math.min(word.length / 4, 3)
+      }
+      // Also check for partial/substring matches for longer words
+      if (word.length >= 5) {
+        for (const [chunkWord] of chunkWords) {
+          if (chunkWord.length >= 5 && !matchedSet.has(chunkWord)) {
+            if (word.includes(chunkWord) || chunkWord.includes(word)) {
+              matchedSet.add(chunkWord)
+              matchedWords += 0.5
+              totalWeight += 1
+            }
+          }
+        }
       }
     }
 
-    // Only return if we found a decent match (at least 3 words)
-    if (bestScore >= 3) {
-      // Expand to word boundaries
-      while (bestStart > 0 && text[bestStart - 1] !== ' ' && text[bestStart - 1] !== '\n') bestStart--
-      while (bestEnd < text.length && text[bestEnd] !== ' ' && text[bestEnd] !== '\n') bestEnd++
-      return { start: bestStart, end: bestEnd }
+    // Score based on percentage of chunk words found + weighted score
+    const coverage = matchedWords / chunkWords.size
+    return coverage * 100 + totalWeight
+  }, [])
+
+  // Find best matching sentences or regions
+  const findBestMatchingRegions = useCallback((
+    text: string,
+    chunkWords: Map<string, number>
+  ): { start: number; end: number }[] => {
+    if (chunkWords.size === 0) return []
+
+    const sentences = splitIntoSentences(text)
+    const scoredSentences = sentences.map(s => ({
+      ...s,
+      score: calculateSimilarityScore(s.text, chunkWords)
+    }))
+
+    // Sort by score descending
+    scoredSentences.sort((a, b) => b.score - a.score)
+
+    // Very low threshold - just need ANY word matches
+    const minScore = Math.max(1, chunkWords.size * 0.05) // At least 5% word coverage or 1 match
+    const topMatches = scoredSentences
+      .filter(s => s.score >= minScore)
+      .slice(0, 5) // Up to 5 highlights
+
+    if (topMatches.length === 0) {
+      // Fallback: sliding window approach - be very aggressive
+      const windowSize = 400
+      const step = 30
+      let bestStart = 0
+      let bestEnd = 0
+      let bestScore = 0
+
+      for (let i = 0; i < text.length - 30; i += step) {
+        const regionEnd = Math.min(i + windowSize, text.length)
+        const region = text.slice(i, regionEnd)
+        const score = calculateSimilarityScore(region, chunkWords)
+
+        if (score > bestScore) {
+          bestScore = score
+          bestStart = i
+          bestEnd = regionEnd
+        }
+      }
+
+      // Accept any positive score
+      if (bestScore > 0) {
+        // Expand to sentence boundaries
+        while (bestStart > 0 && !['.', '!', '?', '\n'].includes(text[bestStart - 1] ?? '')) bestStart--
+        while (bestEnd < text.length && !['.', '!', '?', '\n'].includes(text[bestEnd] ?? '')) bestEnd++
+        return [{ start: Math.max(0, bestStart), end: Math.min(bestEnd + 1, text.length) }]
+      }
+
+      // Ultimate fallback: highlight first 500 chars if we have the chunk text
+      if (text.length > 0) {
+        return [{ start: 0, end: Math.min(500, text.length) }]
+      }
+
+      return []
     }
 
-    return null
-  }, [])
+    // Merge adjacent sentences into continuous regions
+    const sortedByPosition = [...topMatches].sort((a, b) => a.start - b.start)
+    const merged: { start: number; end: number }[] = []
+
+    for (const match of sortedByPosition) {
+      const last = merged[merged.length - 1]
+      if (!last) {
+        merged.push({ start: match.start, end: match.end })
+      } else if (match.start - last.end < 150) {
+        // Merge if within 150 chars of each other
+        last.end = match.end
+      } else {
+        merged.push({ start: match.start, end: match.end })
+      }
+    }
+
+    return merged
+  }, [splitIntoSentences, calculateSimilarityScore])
 
   // Highlight text in content with fallback to best matching region
   const highlightTextInContent = useCallback((text: string) => {
@@ -162,27 +265,72 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
       }
     }
 
-    // Fallback: find region with most matching words and highlight it
-    const chunkWords = getSignificantWords(highlightChunkText)
-    const bestRegion = findBestMatchingRegion(text, chunkWords)
+    // Third try: match significant phrases (2+ consecutive words)
+    const chunkWords = highlightChunkText.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+    for (let len = Math.min(6, chunkWords.length); len >= 2; len--) {
+      for (let i = 0; i <= chunkWords.length - len; i++) {
+        const phrase = chunkWords.slice(i, i + len).join('\\s+')
+        try {
+          const phraseRegex = new RegExp(`(${phrase})`, 'gi')
+          const phraseMatch = text.replace(phraseRegex, '<mark class="chunk-highlight">$1</mark>')
+          if (phraseMatch !== text) {
+            return phraseMatch
+          }
+        } catch {
+          // Continue
+        }
+      }
+    }
 
-    if (bestRegion) {
-      const before = text.slice(0, bestRegion.start)
-      const match = text.slice(bestRegion.start, bestRegion.end)
-      const after = text.slice(bestRegion.end)
-      return `${before}<mark class="chunk-highlight-word">${match}</mark>${after}`
+    // Fourth try: match any significant single words (longer ones first)
+    const significantWords = chunkWords.filter(w => w.length >= 6).sort((a, b) => b.length - a.length)
+    for (const word of significantWords.slice(0, 5)) {
+      try {
+        const wordRegex = new RegExp(`\\b(${word})\\b`, 'gi')
+        if (wordRegex.test(text)) {
+          // Found a match - now highlight the sentence containing it
+          const sentences = text.split(/(?<=[.!?])\s+/)
+          for (let i = 0; i < sentences.length; i++) {
+            if (new RegExp(`\\b${word}\\b`, 'gi').test(sentences[i] ?? '')) {
+              sentences[i] = `<mark class="chunk-highlight-fuzzy">${sentences[i]}</mark>`
+              return sentences.join(' ')
+            }
+          }
+        }
+      } catch {
+        // Continue
+      }
+    }
+
+    // Fallback: find best matching sentences/regions and highlight them
+    const chunkWordMap = getSignificantWords(highlightChunkText)
+    const bestRegions = findBestMatchingRegions(text, chunkWordMap)
+
+    if (bestRegions.length > 0) {
+      // Build result with multiple highlights
+      let result = ''
+      let lastEnd = 0
+
+      for (const region of bestRegions) {
+        result += text.slice(lastEnd, region.start)
+        result += `<mark class="chunk-highlight-fuzzy">${text.slice(region.start, region.end)}</mark>`
+        lastEnd = region.end
+      }
+      result += text.slice(lastEnd)
+      return result
     }
 
     return text
-  }, [highlightChunkText, getSignificantWords, findBestMatchingRegion])
+  }, [highlightChunkText, getSignificantWords, findBestMatchingRegions])
 
-  // Scroll to highlight (supports both exact and word-based highlights)
+  // Scroll to highlight (supports exact, word-based, and fuzzy highlights)
   useEffect(() => {
     if (highlightChunkText && parsedContainerRef.current) {
       const timer = setTimeout(() => {
-        // Try exact highlight first, then word-based
+        // Try exact highlight first, then word-based, then fuzzy
         const highlight = parsedContainerRef.current?.querySelector('.chunk-highlight') ||
-                         parsedContainerRef.current?.querySelector('.chunk-highlight-word')
+                         parsedContainerRef.current?.querySelector('.chunk-highlight-word') ||
+                         parsedContainerRef.current?.querySelector('.chunk-highlight-fuzzy')
         if (highlight) {
           highlight.scrollIntoView({ behavior: 'instant', block: 'center' })
         }

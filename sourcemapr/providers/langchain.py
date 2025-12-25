@@ -18,6 +18,24 @@ from sourcemapr.providers.base import BaseProvider
 from sourcemapr.store import TraceStore
 
 
+# Thread-local flag to skip callback logging when inside a patched pipeline retriever
+_pipeline_context = threading.local()
+
+def _in_pipeline_retriever():
+    """Check if we're currently inside a patched pipeline retriever."""
+    return getattr(_pipeline_context, 'active', False)
+
+def _set_pipeline_context(active: bool):
+    """Set whether we're inside a patched pipeline retriever."""
+    _pipeline_context.active = active
+
+def _get_pending_pipeline_queries():
+    """Get set of queries that have pending pipeline results (skip callback logging for these)."""
+    if not hasattr(_pipeline_context, 'pending_queries'):
+        _pipeline_context.pending_queries = set()
+    return _pipeline_context.pending_queries
+
+
 # ============================================================================
 # CALLBACK HANDLER
 # ============================================================================
@@ -180,6 +198,21 @@ def _create_callback_handler(store: TraceStore, skip_llm_logging: bool = False):
             **kwargs: Any,
         ) -> None:
             """Called when retrieval starts."""
+            # Skip if inside a patched pipeline retriever (it handles its own logging)
+            if _in_pipeline_retriever():
+                self._retriever_starts[str(run_id)] = {'skip': True}
+                return
+            # Skip patched pipeline retrievers (they handle their own logging)
+            patched_retrievers = ['ContextualCompressionRetriever', 'MultiQueryRetriever', 'EnsembleRetriever']
+            retriever_name = ''
+            if serialized:
+                retriever_name = serialized.get('name', serialized.get('id', [''])[-1] if serialized.get('id') else '')
+            # Also check kwargs for retriever class name
+            if not retriever_name and 'tags' in kwargs:
+                retriever_name = str(kwargs.get('tags', []))
+            if any(r in str(retriever_name) for r in patched_retrievers):
+                self._retriever_starts[str(run_id)] = {'skip': True}
+                return
             self._retriever_starts[str(run_id)] = {
                 "start_time": time.time(),
                 "query": query,
@@ -195,11 +228,22 @@ def _create_callback_handler(store: TraceStore, skip_llm_logging: bool = False):
             **kwargs: Any,
         ) -> None:
             """Called when retrieval finishes."""
+            # Skip if inside a patched pipeline retriever (it handles its own logging)
+            if _in_pipeline_retriever():
+                return
             run_id_str = str(run_id)
             retriever_data = self._retriever_starts.pop(run_id_str, {
                 "start_time": time.time(),
                 "query": "",
             })
+            # Skip if this retriever was marked to skip (patched pipeline retriever)
+            if retriever_data.get('skip'):
+                return
+            # Skip if query is pending from a pipeline (already logged by patched function)
+            query = retriever_data.get("query", "")
+            if query in _get_pending_pipeline_queries():
+                _get_pending_pipeline_queries().discard(query)
+                return
             duration_ms = (time.time() - retriever_data["start_time"]) * 1000
 
             results = []
@@ -247,6 +291,8 @@ def _create_callback_handler(store: TraceStore, skip_llm_logging: bool = False):
             **kwargs: Any,
         ) -> None:
             """Called when retrieval errors."""
+            if _in_pipeline_retriever():
+                return
             self._retriever_starts.pop(str(run_id), None)
 
     return SourcemapRLangChainHandler()
@@ -532,133 +578,146 @@ class LangChainProvider(BaseProvider):
                 pipeline_id = str(uuid.uuid4())[:12]
                 stage_order = 1
 
-                # Stage 1: Base retrieval
-                base_start = time.time()
-                base_docs = self_retriever.base_retriever.get_relevant_documents(query)
-                base_duration = (time.time() - base_start) * 1000
+                # Set context to skip callback logging (we handle it here)
+                _set_pipeline_context(True)
 
-                base_chunks = []
-                for i, doc in enumerate(base_docs):
-                    base_chunks.append({
-                        'chunk_id': doc.metadata.get('chunk_id', f"chunk_{i}"),
-                        'doc_id': doc.metadata.get('source', 'unknown'),
-                        'text': doc.page_content[:500],
-                        'input_rank': i + 1,
-                        'output_rank': i + 1,
-                        'input_score': doc.metadata.get('score', 0),
-                        'output_score': doc.metadata.get('score', 0),
-                        'source': 'base_retriever',
-                        'status': 'kept',
-                    })
+                try:
+                    # Stage 1: Base retrieval
+                    base_start = time.time()
+                    base_docs = self_retriever.base_retriever.get_relevant_documents(query)
+                    base_duration = (time.time() - base_start) * 1000
 
-                # Log base retrieval stage
-                self.store._send_queue.put({
-                    'type': 'pipeline_stage',
-                    'data': {
-                        'stage_id': f"{pipeline_id}_retrieval",
-                        'pipeline_id': pipeline_id,
-                        'stage_type': 'retrieval',
-                        'stage_name': self_retriever.base_retriever.__class__.__name__,
-                        'stage_order': stage_order,
-                        'input_count': 0,
-                        'output_count': len(base_docs),
-                        'duration_ms': base_duration,
-                        'metadata': {'query': query},
-                        'chunks': base_chunks,
-                    }
-                })
-                stage_order += 1
-
-                # Stage 2: Compression/Reranking
-                compress_start = time.time()
-                compressed_docs = self_retriever.base_compressor.compress_documents(base_docs, query)
-                compress_duration = (time.time() - compress_start) * 1000
-
-                # Track which chunks survived and their new scores/ranks
-                compressed_chunks = []
-                survived_ids = set()
-                for i, doc in enumerate(compressed_docs):
-                    chunk_id = doc.metadata.get('chunk_id', f"chunk_{i}")
-                    survived_ids.add(chunk_id)
-                    compressed_chunks.append({
-                        'chunk_id': chunk_id,
-                        'doc_id': doc.metadata.get('source', 'unknown'),
-                        'text': doc.page_content[:500],
-                        'input_rank': next((j+1 for j, c in enumerate(base_chunks) if c['chunk_id'] == chunk_id), None),
-                        'output_rank': i + 1,
-                        'input_score': next((c['input_score'] for c in base_chunks if c['chunk_id'] == chunk_id), 0),
-                        'output_score': doc.metadata.get('relevance_score', doc.metadata.get('score', 0)),
-                        'source': 'compressor',
-                        'status': 'kept',
-                    })
-
-                # Mark filtered chunks
-                for chunk in base_chunks:
-                    if chunk['chunk_id'] not in survived_ids:
-                        compressed_chunks.append({
-                            **chunk,
-                            'output_rank': None,
-                            'status': 'filtered',
+                    base_chunks = []
+                    for i, doc in enumerate(base_docs):
+                        source = doc.metadata.get('source', 'unknown')
+                        base_chunks.append({
+                            'chunk_id': doc.metadata.get('chunk_id', f"chunk_{i}"),
+                            'doc_id': os.path.basename(source) if source != 'unknown' else 'unknown',
+                            'text': doc.page_content[:500],
+                            'input_rank': i + 1,
+                            'output_rank': i + 1,
+                            'input_score': doc.metadata.get('score', 0),
+                            'output_score': doc.metadata.get('score', 0),
+                            'source': 'base_retriever',
+                            'status': 'kept',
                         })
 
-                # Log compression stage
-                compressor_name = self_retriever.base_compressor.__class__.__name__
-                self.store._send_queue.put({
-                    'type': 'pipeline_stage',
-                    'data': {
-                        'stage_id': f"{pipeline_id}_compression",
-                        'pipeline_id': pipeline_id,
-                        'stage_type': 'reranking' if 'rerank' in compressor_name.lower() else 'compression',
-                        'stage_name': compressor_name,
-                        'stage_order': stage_order,
-                        'input_count': len(base_docs),
-                        'output_count': len(compressed_docs),
-                        'duration_ms': compress_duration,
-                        'metadata': {'compression_ratio': len(compressed_docs) / max(len(base_docs), 1)},
-                        'chunks': compressed_chunks,
-                    }
-                })
+                    # Log base retrieval stage
+                    self.store._send_queue.put({
+                        'type': 'pipeline_stage',
+                        'data': {
+                            'stage_id': f"{pipeline_id}_retrieval",
+                            'pipeline_id': pipeline_id,
+                            'stage_type': 'retrieval',
+                            'stage_name': self_retriever.base_retriever.__class__.__name__,
+                            'stage_order': stage_order,
+                            'input_count': 0,
+                            'output_count': len(base_docs),
+                            'duration_ms': base_duration,
+                            'metadata': {'query': query},
+                            'chunks': base_chunks,
+                        }
+                    })
+                    stage_order += 1
 
-                total_duration = (time.time() - start_time) * 1000
+                    # Stage 2: Compression/Reranking
+                    compress_start = time.time()
+                    compressed_docs = self_retriever.base_compressor.compress_documents(base_docs, query)
+                    compress_duration = (time.time() - compress_start) * 1000
 
-                # Generate retrieval_id to link retrieval and pipeline
-                retrieval_id = f"ret_{pipeline_id}"
+                    # Track which chunks survived and their new scores/ranks
+                    compressed_chunks = []
+                    survived_ids = set()
+                    for i, doc in enumerate(compressed_docs):
+                        chunk_id = doc.metadata.get('chunk_id', f"chunk_{i}")
+                        survived_ids.add(chunk_id)
+                        source = doc.metadata.get('source', 'unknown')
+                        compressed_chunks.append({
+                            'chunk_id': chunk_id,
+                            'doc_id': os.path.basename(source) if source != 'unknown' else 'unknown',
+                            'text': doc.page_content[:500],
+                            'input_rank': next((j+1 for j, c in enumerate(base_chunks) if c['chunk_id'] == chunk_id), None),
+                            'output_rank': i + 1,
+                            'input_score': next((c['input_score'] for c in base_chunks if c['chunk_id'] == chunk_id), 0),
+                            'output_score': doc.metadata.get('relevance_score', doc.metadata.get('score', 0)),
+                            'source': 'compressor',
+                            'status': 'kept',
+                        })
 
-                # Send pipeline record (links stages together and to retrieval)
-                self.store._send_queue.put({
-                    'type': 'pipeline',
-                    'data': {
-                        'pipeline_id': pipeline_id,
-                        'query': query,
-                        'total_duration_ms': total_duration,
-                        'num_stages': stage_order,
-                        'retrieval_id': retrieval_id,
-                    }
-                })
+                    # Mark filtered chunks
+                    for chunk in base_chunks:
+                        if chunk['chunk_id'] not in survived_ids:
+                            compressed_chunks.append({
+                                **chunk,
+                                'output_rank': None,
+                                'status': 'filtered',
+                            })
 
-                # Build final results for retrieval event
-                final_results = []
-                for i, doc in enumerate(compressed_docs):
-                    metadata = getattr(doc, 'metadata', {})
-                    final_results.append({
-                        'chunk_id': metadata.get('chunk_id', f"chunk_{i}"),
-                        'score': metadata.get('relevance_score', metadata.get('score', 0)),
-                        'text': doc.page_content[:500] if hasattr(doc, 'page_content') else '',
-                        'doc_id': metadata.get('source', 'unknown'),
-                        'page_number': metadata.get('page', metadata.get('page_label')),
+                    # Log compression stage
+                    compressor_name = self_retriever.base_compressor.__class__.__name__
+                    self.store._send_queue.put({
+                        'type': 'pipeline_stage',
+                        'data': {
+                            'stage_id': f"{pipeline_id}_compression",
+                            'pipeline_id': pipeline_id,
+                            'stage_type': 'reranking' if 'rerank' in compressor_name.lower() else 'compression',
+                            'stage_name': compressor_name,
+                            'stage_order': stage_order,
+                            'input_count': len(base_docs),
+                            'output_count': len(compressed_docs),
+                            'duration_ms': compress_duration,
+                            'metadata': {'compression_ratio': len(compressed_docs) / max(len(base_docs), 1)},
+                            'chunks': compressed_chunks,
+                        }
                     })
 
-                # Send retrieval event with final compressed results
-                self.store.log_retrieval(
-                    query=query,
-                    results=final_results,
-                    duration_ms=total_duration,
-                    retrieval_id=retrieval_id,
-                )
+                    total_duration = (time.time() - start_time) * 1000
 
-                print(f"[SourcemapR] ContextualCompression: {len(base_docs)} → {len(compressed_docs)} docs ({total_duration:.0f}ms)")
+                    # Generate retrieval_id to link retrieval and pipeline
+                    retrieval_id = f"ret_{pipeline_id}"
 
-                return list(compressed_docs)
+                    # Send pipeline record (links stages together and to retrieval)
+                    self.store._send_queue.put({
+                        'type': 'pipeline',
+                        'data': {
+                            'pipeline_id': pipeline_id,
+                            'query': query,
+                            'total_duration_ms': total_duration,
+                            'num_stages': stage_order,
+                            'retrieval_id': retrieval_id,
+                        }
+                    })
+
+                    # Build final results for retrieval event
+                    final_results = []
+                    for i, doc in enumerate(compressed_docs):
+                        metadata = getattr(doc, 'metadata', {})
+                        source = metadata.get('source', 'unknown')
+                        final_results.append({
+                            'chunk_id': metadata.get('chunk_id', f"chunk_{i}"),
+                            'score': metadata.get('relevance_score', metadata.get('score', 0)),
+                            'text': doc.page_content[:500] if hasattr(doc, 'page_content') else '',
+                            'doc_id': os.path.basename(source) if source != 'unknown' else 'unknown',
+                            'page_number': metadata.get('page', metadata.get('page_label')),
+                        })
+
+                    # Mark query as pending so callback skips it
+                    _get_pending_pipeline_queries().add(query)
+
+                    # Send retrieval event with final compressed results
+                    self.store.log_retrieval(
+                        query=query,
+                        results=final_results,
+                        duration_ms=total_duration,
+                        retrieval_id=retrieval_id,
+                    )
+
+                    print(f"[SourcemapR] ContextualCompression: {len(base_docs)} → {len(compressed_docs)} docs ({total_duration:.0f}ms)")
+
+                    return list(compressed_docs)
+                finally:
+                    # Always reset the pipeline context
+                    _set_pipeline_context(False)
 
             patched_get_docs._sourcemapr_patched = True
             ContextualCompressionRetriever._get_relevant_documents = patched_get_docs
@@ -726,12 +785,13 @@ class LangChainProvider(BaseProvider):
                 seen_chunks = set()
                 for q, docs in docs_by_query.items():
                     for i, doc in enumerate(docs):
-                        chunk_id = doc.metadata.get('chunk_id', f"{doc.metadata.get('source', 'unknown')}_{hash(doc.page_content) % 10000}")
+                        source = doc.metadata.get('source', 'unknown')
+                        chunk_id = doc.metadata.get('chunk_id', f"{source}_{hash(doc.page_content) % 10000}")
                         if chunk_id not in seen_chunks:
                             seen_chunks.add(chunk_id)
                             retrieval_chunks.append({
                                 'chunk_id': chunk_id,
-                                'doc_id': doc.metadata.get('source', 'unknown'),
+                                'doc_id': os.path.basename(source) if source != 'unknown' else 'unknown',
                                 'text': doc.page_content[:500],
                                 'input_rank': i + 1,
                                 'output_rank': None,  # Set after dedup
@@ -791,11 +851,12 @@ class LangChainProvider(BaseProvider):
                 final_results = []
                 for i, doc in enumerate(unique_docs):
                     metadata = getattr(doc, 'metadata', {})
+                    source = metadata.get('source', 'unknown')
                     final_results.append({
                         'chunk_id': metadata.get('chunk_id', f"chunk_{i}"),
                         'score': metadata.get('score', 0),
                         'text': doc.page_content[:500] if hasattr(doc, 'page_content') else '',
-                        'doc_id': metadata.get('source', 'unknown'),
+                        'doc_id': os.path.basename(source) if source != 'unknown' else 'unknown',
                         'page_number': metadata.get('page', metadata.get('page_label')),
                     })
 
@@ -852,10 +913,11 @@ class LangChainProvider(BaseProvider):
                     })
 
                     for j, doc in enumerate(docs):
-                        chunk_id = doc.metadata.get('chunk_id', f"{doc.metadata.get('source', 'unknown')}_{hash(doc.page_content) % 10000}")
+                        source = doc.metadata.get('source', 'unknown')
+                        chunk_id = doc.metadata.get('chunk_id', f"{source}_{hash(doc.page_content) % 10000}")
                         all_chunks.append({
                             'chunk_id': chunk_id,
-                            'doc_id': doc.metadata.get('source', 'unknown'),
+                            'doc_id': os.path.basename(source) if source != 'unknown' else 'unknown',
                             'text': doc.page_content[:500],
                             'input_rank': j + 1,
                             'output_rank': None,
@@ -939,11 +1001,12 @@ class LangChainProvider(BaseProvider):
                 final_results = []
                 for i, doc in enumerate(result_docs):
                     metadata = getattr(doc, 'metadata', {})
+                    source = metadata.get('source', 'unknown')
                     final_results.append({
                         'chunk_id': metadata.get('chunk_id', f"chunk_{i}"),
                         'score': metadata.get('score', 0),
                         'text': doc.page_content[:500] if hasattr(doc, 'page_content') else '',
-                        'doc_id': metadata.get('source', 'unknown'),
+                        'doc_id': os.path.basename(source) if source != 'unknown' else 'unknown',
                         'page_number': metadata.get('page', metadata.get('page_label')),
                     })
 

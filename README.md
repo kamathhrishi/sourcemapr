@@ -1,8 +1,13 @@
 # SourceMapR
 
-**Evidence observability for RAG.** See what your RAG system actually saw.
+[![PyPI version](https://img.shields.io/pypi/v/sourcemapr.svg)](https://pypi.org/project/sourcemapr/)
+[![Python versions](https://img.shields.io/pypi/pyversions/sourcemapr.svg)](https://pypi.org/project/sourcemapr/)
+[![License](https://img.shields.io/pypi/l/sourcemapr.svg)](https://github.com/kamathhrishi/sourcemapr/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/pypi/dm/sourcemapr.svg)](https://pypi.org/project/sourcemapr/)
 
-SourceMapR traces every answer back to the exact document evidence that produced it — and shows how that evidence was created (parse → chunk → embed → retrieve → answer).
+**See what your RAG system actually saw.**
+
+SourceMapR provides evidence observability for RAG pipelines. Trace every LLM answer back to the exact document evidence that produced it, with complete evidence lineage.
 
 ---
 
@@ -15,33 +20,71 @@ SourceMapR traces every answer back to the exact document evidence that produced
 | "Why did the model hallucinate?" | Click any chunk to view it in the original PDF |
 | "Is my chunking strategy working?" | Compare experiments side by side |
 
-**Two lines of code. Full evidence lineage.**
+**Add RAG observability in two lines of code.**
+
+---
+
+## Document Support
+
+| Format | Status | Notes |
+|--------|--------|-------|
+| **PDF** | ✅ Supported | Full support with chunk highlighting and source viewing |
+| HTML | 🧪 Experimental | Basic rendering, chunk highlighting may not work |
+| Other formats | 🧪 Experimental | Under development |
+
+> **Current Focus:** SourceMapR is optimized for **PDF documents**. Support for HTML and other file types is experimental and under active development.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Clone and install
-git clone https://github.com/kamathhrishi/sourcemapr.git
-cd sourcemapr && pip install -e .
-
-# Start dashboard
+pip install sourcemapr
 sourcemapr server
 ```
 
+### LlamaIndex
+
 ```python
 from sourcemapr import init_tracing, stop_tracing
-
 init_tracing(endpoint="http://localhost:5000")
 
-# Your LlamaIndex / LangChain code here — unchanged
-# Everything is automatically traced
+# Your existing LlamaIndex code — unchanged
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
+
+documents = SimpleDirectoryReader("./papers").load_data()
+index = VectorStoreIndex.from_documents(documents)
+
+response = index.as_query_engine().query("What is attention?")
+print(response)
 
 stop_tracing()
 ```
 
-Open **http://localhost:5000** to see traces.
+### LangChain
+
+```python
+from sourcemapr import init_tracing, stop_tracing
+init_tracing(endpoint="http://localhost:5000")
+
+# Your existing LangChain code — unchanged
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+
+loader = PyPDFLoader("./papers/attention.pdf")
+documents = loader.load()
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=512)
+chunks = splitter.split_documents(documents)
+
+vectorstore = FAISS.from_documents(chunks, embeddings)
+results = vectorstore.similarity_search("What is attention?")
+
+stop_tracing()
+```
+
+Open **http://localhost:5000** to see the full evidence lineage.
 
 ---
 
@@ -53,19 +96,22 @@ Open **http://localhost:5000** to see traces.
 | **LangChain** | ✅ | ✅ | ✅ | ✅ |
 | **OpenAI** | — | — | — | ✅ |
 
+### Pipeline Support
+
+> **⚠️ Experimental:** Pipeline tracing (e.g., `langchain_pipeline_demo.py`) is currently experimental and does not have stable support. Basic functionality works but may have limitations.
+
 See [Supported Features](sourcemapr/providers/README.md) for details.
 
 ---
 
 ## Features
 
-- **Answer → Evidence** — Trace responses to exact chunks with scores
-- **PDF Source Viewer** — Click any chunk to see it highlighted in the original PDF
-- **Full LLM Capture** — Prompts, responses, tokens, latency
-- **Experiment Tracking** — A/B test configurations
-- **Real-time Dashboard** — Watch traces appear live
-
-> **Note:** The document viewer is optimized for **PDF files**. HTML document support is experimental — files may render but chunk highlighting and navigation may not work as expected.
+- **Trace LLM Answers to Sources** — Trace responses to exact chunks with similarity scores and rankings
+- **PDF Chunk Viewer** — Click any chunk to see it highlighted in the original PDF
+- **Full LLM Tracing** — Prompts, responses, tokens, latency for every query
+- **Experiment Tracking** — Organize runs and compare chunking strategies
+- **Evidence Lineage** — Complete trace from document load → parse → chunk → embed → retrieve → answer
+- **Debug RAG Hallucinations** — Verify grounding without guessing
 
 ---
 
@@ -103,6 +149,23 @@ python examples/langchain_pdf_demo.py
 ```
 
 See [Examples](examples/README.md) for more.
+
+---
+
+## Installation
+
+### From PyPI
+
+```bash
+pip install sourcemapr
+```
+
+### From Source
+
+```bash
+git clone https://github.com/kamathhrishi/sourcemapr.git
+cd sourcemapr && pip install -e .
+```
 
 ---
 

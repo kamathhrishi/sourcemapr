@@ -1,9 +1,15 @@
 """
 SourcemapR Demo - LangChain RAG with Pipeline Tracking
 
-This demo uses ContextualCompressionRetriever to show pipeline stages:
-  Stage 1: Base retrieval (VectorStoreRetriever)
-  Stage 2: Reranking/Compression (CohereRerank or LLMChainFilter)
+This demo compares queries WITH and WITHOUT pipeline:
+
+WITHOUT PIPELINE (simple):
+  Retrieval → Answer
+
+WITH PIPELINE (full stages):
+  Stage 1: Base retrieval (VectorStoreRetriever) - fetches 20 chunks
+  Stage 2: Compression (LLMChainExtractor) - filters to most relevant
+  Stage 3: Answer generation (LLM)
 
 Usage:
     # Terminal 1: Start the server
@@ -75,7 +81,7 @@ def main():
         base_retriever=base_retriever
     )
 
-    # Create RAG chain
+    # Create RAG prompt
     prompt = ChatPromptTemplate.from_template("""
 Answer the question based only on the following context:
 
@@ -88,26 +94,45 @@ Answer:""")
     def format_docs(docs):
         return "\n\n".join(doc.page_content for doc in docs)
 
-    rag_chain = (
+    # Chain WITHOUT pipeline (simple retrieval)
+    simple_chain = (
+        {"context": base_retriever | format_docs, "question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+
+    # Chain WITH pipeline (retrieval + compression + answer)
+    pipeline_chain = (
         {"context": compression_retriever | format_docs, "question": RunnablePassthrough()}
         | prompt
         | llm
         | StrOutputParser()
     )
 
-    # Run queries
-    print("\n" + "-" * 50)
-    print("Running queries with PIPELINE TRACKING...")
-    print("-" * 50)
-
     queries = [
         "What is the attention mechanism?",
         "How does Llama 2 handle safety?",
     ]
 
+    # Run queries WITHOUT pipeline
+    print("\n" + "-" * 50)
+    print("Running queries WITHOUT PIPELINE (simple retrieval)...")
+    print("-" * 50)
+
     for q in queries:
         print(f"\nQ: {q}")
-        response = rag_chain.invoke(q, config={"callbacks": [handler]} if handler else {})
+        response = simple_chain.invoke(q, config={"callbacks": [handler]} if handler else {})
+        print(f"A: {response[:200]}...")
+
+    # Run queries WITH pipeline
+    print("\n" + "-" * 50)
+    print("Running queries WITH PIPELINE (retrieval → compression → answer)...")
+    print("-" * 50)
+
+    for q in queries:
+        print(f"\nQ: {q}")
+        response = pipeline_chain.invoke(q, config={"callbacks": [handler]} if handler else {})
         print(f"A: {response[:200]}...")
 
     print("\nFlushing traces...")

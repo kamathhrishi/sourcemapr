@@ -381,6 +381,15 @@
   border-bottom: 1px dashed rgba(217, 119, 6, 0.5);
 }
 
+/* Chunk highlight styles - fuzzy/sentence match (subtle highlight) */
+.chunk-highlight-fuzzy {
+  background-color: rgba(147, 197, 253, 0.25);
+  border-radius: 2px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  border-left: 2px solid rgba(59, 130, 246, 0.5);
+}
+
 /* PDF text layer styles */
 .textLayer .highlight {
   background-color: var(--accent-muted);

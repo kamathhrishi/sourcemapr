@@ -125,11 +125,26 @@ def _create_callback_handler(store: TraceStore, skip_llm_logging: bool = False):
             for i, n in enumerate(source_nodes):
                 node = getattr(n, 'node', n)
                 metadata = getattr(node, 'metadata', {}) if node else {}
+
+                # Get doc_id with multiple fallbacks, always use basename
+                doc_id = metadata.get('file_name') or metadata.get('filename', '')
+                if not doc_id:
+                    file_path = metadata.get('file_path', '')
+                    if file_path:
+                        doc_id = os.path.basename(file_path)
+                if not doc_id and hasattr(node, 'ref_doc_id') and node.ref_doc_id:
+                    # ref_doc_id might be a path, extract basename
+                    ref_id = node.ref_doc_id
+                    if '/' in ref_id or '\\' in ref_id:
+                        doc_id = os.path.basename(ref_id)
+                    else:
+                        doc_id = ref_id
+
                 results.append({
                     "chunk_id": node.node_id if hasattr(node, 'node_id') else str(i),
                     "score": getattr(n, 'score', 0),
                     "text": node.text[:500] if hasattr(node, 'text') else str(n)[:500],
-                    "doc_id": metadata.get('file_name', ''),
+                    "doc_id": doc_id,
                     "page_number": metadata.get('page_label'),
                     "file_path": metadata.get('file_path', ''),
                 })

@@ -54,18 +54,66 @@
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    * {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    body {
+      background: linear-gradient(to bottom, #fafafa 0%, #ffffff 100%);
+    }
+    
     .gradient-text {
       background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
+    
+    .glass {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    .glass-card {
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.06), 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+    }
+    
+    .glass-dark {
+      background: rgba(17, 24, 39, 0.95);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .shadow-premium {
+      box-shadow: 0 20px 60px -12px rgba(0, 0, 0, 0.08), 0 8px 24px -8px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.02);
+    }
+    
+    .shadow-premium-lg {
+      box-shadow: 0 32px 80px -12px rgba(0, 0, 0, 0.12), 0 16px 40px -8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.03);
+    }
+    
+    .hover-lift {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .hover-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 24px 72px -12px rgba(0, 0, 0, 0.12), 0 12px 32px -8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.03);
+    }
   </style>
 </head>
 
-<body class="bg-white text-gray-900 antialiased">
+<body class="text-gray-900 antialiased">
   <!-- Navigation -->
-  <header class="sticky top-0 z-50 border-b border-gray-200 bg-white/80 backdrop-blur-sm">
+  <header class="sticky top-0 z-50 glass border-b border-white/20">
     <nav class="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 py-4">
       <div class="flex items-center gap-3">
         <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
@@ -82,21 +130,21 @@
         <span class="text-xl font-semibold">SourceMapR</span>
       </div>
 
-      <div class="hidden items-center gap-8 text-sm font-medium text-gray-600 md:flex">
-        <a href="#features" class="hover:text-gray-900 transition-colors">Features</a>
-        <a href="#frameworks" class="hover:text-gray-900 transition-colors">Frameworks</a>
-        <a href="#how-it-works" class="hover:text-gray-900 transition-colors">How it works</a>
-        <a href="blog/index.html" class="hover:text-gray-900 transition-colors">Blog</a>
-        <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="hover:text-gray-900 transition-colors">Docs</a>
+      <div class="hidden items-center gap-8 text-sm font-medium text-gray-700 md:flex">
+        <a href="#features" class="hover:text-gray-900 transition-colors duration-200">Features</a>
+        <a href="#frameworks" class="hover:text-gray-900 transition-colors duration-200">Frameworks</a>
+        <a href="#how-it-works" class="hover:text-gray-900 transition-colors duration-200">How it works</a>
+        <a href="blog/index.html" class="hover:text-gray-900 transition-colors duration-200">Blog</a>
+        <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="hover:text-gray-900 transition-colors duration-200">Docs</a>
       </div>
 
       <div class="flex items-center gap-2 sm:gap-3">
-        <a href="https://github.com/kamathhrishi/sourcemapr" class="group hidden sm:inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+        <a href="https://github.com/kamathhrishi/sourcemapr" class="group hidden sm:inline-flex items-center gap-2 rounded-xl glass px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white/90 transition-all duration-200 shadow-sm hover:shadow-md">
           <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
           <span id="star-text">Star</span>
-          <span id="star-count" class="hidden rounded-md bg-gray-100 px-1.5 py-0.5 text-xs font-semibold"></span>
+          <span id="star-count" class="hidden rounded-md bg-white/60 px-1.5 py-0.5 text-xs font-semibold"></span>
         </a>
-        <a href="#get-started" class="rounded-lg bg-gray-900 px-3 sm:px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors">
+        <a href="#get-started" class="rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-all duration-200 shadow-lg hover:shadow-xl">
           Get started
         </a>
       </div>
@@ -104,59 +152,59 @@
   </header>
 
   <!-- Hero Section -->
-  <section class="relative overflow-hidden bg-white">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20 lg:py-32">
+  <section class="relative overflow-hidden">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-24 lg:py-36">
       <div class="mx-auto max-w-3xl text-center">
-        <h1 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl xl:text-7xl">
+        <h1 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl xl:text-7xl leading-tight">
           See what your RAG system <span class="gradient-text">actually saw</span>
           </h1>
-        <p class="mt-4 sm:mt-6 text-base leading-7 text-gray-600 sm:text-lg lg:text-xl">
+        <p class="mt-6 sm:mt-8 text-base leading-relaxed text-gray-600 sm:text-lg lg:text-xl max-w-2xl mx-auto">
           SourceMapR provides evidence observability for RAG pipelines. Trace every LLM answer back to the exact document evidence that produced it, with complete evidence lineage.
           </p>
-        <div class="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
-          <a href="#get-started" class="rounded-lg bg-gray-900 px-6 py-3 text-base font-semibold text-white hover:bg-gray-800 transition-colors">
+        <div class="mt-10 sm:mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <a href="#get-started" class="rounded-xl bg-gray-900 px-8 py-3.5 text-base font-semibold text-white hover:bg-gray-800 transition-all duration-200 shadow-lg hover:shadow-xl">
               Get started
             </a>
-          <a href="#how-it-works" class="rounded-lg border border-gray-300 bg-white px-6 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50 transition-colors">
+          <a href="#how-it-works" class="rounded-xl glass px-8 py-3.5 text-base font-semibold text-gray-900 hover:bg-white/90 transition-all duration-200 shadow-sm hover:shadow-md">
             Learn more
             </a>
           </div>
           </div>
 
       <!-- Product Screenshot -->
-      <div class="mt-12 sm:mt-16">
-        <div class="mx-auto max-w-5xl rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:p-8 shadow-2xl">
-          <img src="screenshot.png" alt="SourceMapR Dashboard" class="w-full h-auto rounded-xl shadow-lg" />
+      <div class="mt-16 sm:mt-20">
+        <div class="mx-auto max-w-5xl rounded-3xl glass-card p-6 sm:p-10 shadow-premium-lg hover-lift">
+          <img src="screenshot.png" alt="SourceMapR Dashboard" class="w-full h-auto rounded-2xl shadow-premium" />
               </div>
             </div>
 
       <!-- Code Examples Section -->
-      <section class="mt-12 sm:mt-16 bg-white">
+      <section class="mt-16 sm:mt-20">
         <div class="mx-auto max-w-7xl px-4 sm:px-6">
           <div class="mx-auto max-w-2xl text-center">
             <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
               Add RAG Observability in Two Lines
             </h2>
-            <p class="mt-4 text-lg text-gray-600">
+            <p class="mt-5 text-lg text-gray-600 leading-relaxed">
               Add SourceMapR to your existing LangChain or LlamaIndex pipeline. Your code stays the same — we provide RAG observability automatically.
             </p>
           </div>
 
           <!-- Tab buttons -->
-          <div class="mt-8 sm:mt-12 flex justify-center gap-2">
-            <button id="tab-llamaindex" onclick="showTab('llamaindex')" class="inline-flex items-center gap-2 rounded-lg bg-purple-100 px-4 py-2 text-sm font-medium text-purple-700 transition hover:bg-purple-200">
+          <div class="mt-10 sm:mt-12 flex justify-center gap-3">
+            <button id="tab-llamaindex" onclick="showTab('llamaindex')" class="inline-flex items-center gap-2 rounded-xl glass px-5 py-2.5 text-sm font-medium text-purple-700 transition-all duration-200 shadow-sm hover:shadow-md hover:bg-white/90">
               <img src="https://avatars.githubusercontent.com/u/130722866?s=20" alt="LlamaIndex" class="h-4 w-4 rounded-sm" />
               LlamaIndex
             </button>
-            <button id="tab-langchain" onclick="showTab('langchain')" class="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200">
+            <button id="tab-langchain" onclick="showTab('langchain')" class="inline-flex items-center gap-2 rounded-xl glass px-5 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 shadow-sm hover:shadow-md hover:bg-white/90">
               <img src="https://avatars.githubusercontent.com/u/126733545?s=20" alt="LangChain" class="h-4 w-4 rounded-sm" />
               LangChain
             </button>
               </div>
 
           <!-- LlamaIndex code -->
-          <div id="code-llamaindex" class="mt-4 sm:mt-6 rounded-xl border border-gray-200 bg-gray-900 p-4 sm:p-6 shadow-lg">
-            <pre class="overflow-x-auto text-xs sm:text-sm text-gray-200"><code><span class="text-gray-500"># pip install sourcemapr llama-index</span>
+          <div id="code-llamaindex" class="mt-6 sm:mt-8 rounded-2xl glass-dark p-6 sm:p-8 shadow-premium-lg">
+            <pre class="overflow-x-auto text-xs sm:text-sm text-gray-200 leading-relaxed"><code><span class="text-gray-500"># pip install sourcemapr llama-index</span>
 
 <span class="text-indigo-300">from</span> sourcemapr <span class="text-indigo-300">import</span> init_tracing, stop_tracing
 init_tracing(endpoint=<span class="text-emerald-300">"http://localhost:5000"</span>)
@@ -174,8 +222,8 @@ stop_tracing()</code></pre>
             </div>
 
           <!-- LangChain code -->
-          <div id="code-langchain" class="mt-4 sm:mt-6 hidden rounded-xl border border-gray-200 bg-gray-900 p-4 sm:p-6 shadow-lg">
-            <pre class="overflow-x-auto text-xs sm:text-sm text-gray-200"><code><span class="text-gray-500"># pip install sourcemapr langchain langchain-community</span>
+          <div id="code-langchain" class="mt-6 sm:mt-8 hidden rounded-2xl glass-dark p-6 sm:p-8 shadow-premium-lg">
+            <pre class="overflow-x-auto text-xs sm:text-sm text-gray-200 leading-relaxed"><code><span class="text-gray-500"># pip install sourcemapr langchain langchain-community</span>
 
 <span class="text-indigo-300">from</span> sourcemapr <span class="text-indigo-300">import</span> init_tracing, stop_tracing
 init_tracing(endpoint=<span class="text-emerald-300">"http://localhost:5000"</span>)
@@ -197,8 +245,8 @@ results = vectorstore.similarity_search(<span class="text-emerald-300">"What is 
 stop_tracing()</code></pre>
           </div>
 
-          <div class="mt-6 text-center text-sm text-gray-600">
-            Then open <code class="rounded bg-gray-100 px-2 py-1 text-xs font-mono">http://localhost:5000</code> to see the full evidence lineage.
+          <div class="mt-8 text-center text-sm text-gray-600">
+            Then open <code class="rounded-lg glass px-3 py-1.5 text-xs font-mono shadow-sm">http://localhost:5000</code> to see the full evidence lineage.
           </div>
         </div>
       </section>
@@ -206,7 +254,7 @@ stop_tracing()</code></pre>
   </section>
 
   <!-- Features Section -->
-  <section id="features" class="bg-gray-50 py-12 sm:py-16 lg:py-24">
+  <section id="features" class="bg-gray-50/50 py-16 sm:py-20 lg:py-28">
     <div class="mx-auto max-w-7xl px-4 sm:px-6">
       <div class="mx-auto max-w-2xl text-center">
         <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
@@ -217,9 +265,9 @@ stop_tracing()</code></pre>
         </p>
       </div>
 
-      <div class="mt-8 sm:mt-12 lg:mt-16 grid gap-6 sm:gap-8 md:grid-cols-2 lg:grid-cols-3">
+      <div class="mt-12 sm:mt-16 lg:mt-20 grid gap-6 sm:gap-8 md:grid-cols-2 lg:grid-cols-3">
         <!-- Feature 1 -->
-        <div class="rounded-xl bg-white p-8 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+        <div class="rounded-2xl glass-card p-8 hover-lift">
           <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-100">
             <svg class="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
@@ -232,7 +280,7 @@ stop_tracing()</code></pre>
         </div>
 
         <!-- Feature 2 -->
-        <div class="rounded-xl bg-white p-8 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+        <div class="rounded-2xl glass-card p-8 hover-lift">
           <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-fuchsia-100">
             <svg class="h-6 w-6 text-fuchsia-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -240,12 +288,12 @@ stop_tracing()</code></pre>
               </div>
           <h3 class="mt-6 text-lg font-semibold text-gray-900">PDF Chunk Viewer</h3>
           <p class="mt-3 text-sm text-gray-600">
-            Click any retrieved chunk to see it highlighted in the original PDF. Provides context tracing and retrieval transparency.
+            Click any retrieved chunk to see it highlighted in the original PDF. Optimized for PDF files — HTML and other formats are experimental.
           </p>
             </div>
 
         <!-- Feature 3 -->
-        <div class="rounded-xl bg-white p-8 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+        <div class="rounded-2xl glass-card p-8 hover-lift">
           <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-100">
             <svg class="h-6 w-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
@@ -258,7 +306,7 @@ stop_tracing()</code></pre>
                 </div>
 
         <!-- Feature 4 -->
-        <div class="rounded-xl bg-white p-8 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+        <div class="rounded-2xl glass-card p-8 hover-lift">
           <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-100">
             <svg class="h-6 w-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
@@ -271,7 +319,7 @@ stop_tracing()</code></pre>
                   </div>
 
         <!-- Feature 5 -->
-        <div class="rounded-xl bg-white p-8 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+        <div class="rounded-2xl glass-card p-8 hover-lift">
           <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-100">
             <svg class="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
@@ -284,7 +332,7 @@ stop_tracing()</code></pre>
                   </div>
 
         <!-- Feature 6 -->
-        <div class="rounded-xl bg-white p-8 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+        <div class="rounded-2xl glass-card p-8 hover-lift">
           <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100">
             <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
@@ -300,7 +348,7 @@ stop_tracing()</code></pre>
   </section>
 
   <!-- Frameworks Section -->
-  <section id="frameworks" class="bg-white py-12 sm:py-16 lg:py-24">
+  <section id="frameworks" class="bg-white py-16 sm:py-20 lg:py-28">
     <div class="mx-auto max-w-7xl px-4 sm:px-6">
       <div class="mx-auto max-w-2xl text-center">
         <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
@@ -311,9 +359,9 @@ stop_tracing()</code></pre>
         </p>
       </div>
 
-      <div class="mt-8 sm:mt-12 lg:mt-16 grid gap-6 sm:gap-8 md:grid-cols-2">
+      <div class="mt-12 sm:mt-16 lg:mt-20 grid gap-6 sm:gap-8 md:grid-cols-2">
         <!-- LlamaIndex -->
-        <div class="rounded-xl border border-gray-200 bg-white p-8 shadow-sm hover:shadow-md transition-shadow">
+        <div class="rounded-2xl glass-card p-8 hover-lift">
             <div class="flex items-center gap-4">
             <div class="flex h-16 w-16 items-center justify-center rounded-lg bg-purple-100">
               <img src="https://avatars.githubusercontent.com/u/130722866?s=200" alt="LlamaIndex" class="h-12 w-12 rounded-lg" />
@@ -353,7 +401,7 @@ stop_tracing()</code></pre>
         </div>
 
         <!-- LangChain -->
-        <div class="rounded-xl border border-gray-200 bg-white p-8 shadow-sm hover:shadow-md transition-shadow">
+        <div class="rounded-2xl glass-card p-8 hover-lift">
             <div class="flex items-center gap-4">
             <div class="flex h-16 w-16 items-center justify-center rounded-lg bg-emerald-100">
               <img src="https://avatars.githubusercontent.com/u/126733545?s=200" alt="LangChain" class="h-12 w-12 rounded-lg" />
@@ -396,7 +444,7 @@ stop_tracing()</code></pre>
   </section>
 
   <!-- How It Works Section -->
-  <section id="how-it-works" class="bg-gray-50 py-12 sm:py-16 lg:py-24">
+  <section id="how-it-works" class="bg-gray-50/50 py-16 sm:py-20 lg:py-28">
     <div class="mx-auto max-w-7xl px-4 sm:px-6">
       <div class="mx-auto max-w-2xl text-center">
         <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
@@ -473,7 +521,7 @@ stop_tracing()</code></pre>
       </div>
 
       <!-- Info Box -->
-      <div class="mx-auto mt-8 sm:mt-12 lg:mt-16 max-w-3xl rounded-xl border border-gray-200 bg-white p-6 sm:p-8 shadow-sm">
+      <div class="mx-auto mt-12 sm:mt-16 lg:mt-20 max-w-3xl rounded-2xl glass-card p-8 sm:p-10 shadow-premium hover-lift">
         <div class="flex items-start gap-4">
           <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
             <svg class="h-5 w-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -490,11 +538,29 @@ stop_tracing()</code></pre>
           </div>
         </div>
       </div>
+
+      <!-- Status Notes -->
+      <div class="mx-auto mt-8 max-w-3xl">
+        <div class="flex flex-wrap justify-center gap-4 text-xs text-gray-500">
+          <div class="flex items-center gap-2">
+            <span class="inline-block h-2 w-2 rounded-full bg-green-500"></span>
+            <span><strong>PDF:</strong> Full support</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="inline-block h-2 w-2 rounded-full bg-yellow-500"></span>
+            <span><strong>HTML & other formats:</strong> Experimental</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="inline-block h-2 w-2 rounded-full bg-yellow-500"></span>
+            <span><strong>Pipeline tracing:</strong> Experimental</span>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- Get Started Section -->
-  <section id="get-started" class="bg-gray-50 py-12 sm:py-16 lg:py-24">
+  <section id="get-started" class="bg-white py-16 sm:py-20 lg:py-28">
     <div class="mx-auto max-w-7xl px-4 sm:px-6">
       <div class="mx-auto max-w-2xl text-center">
         <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
@@ -505,37 +571,37 @@ stop_tracing()</code></pre>
           </p>
         </div>
 
-      <div class="mt-8 sm:mt-12 mx-auto max-w-2xl rounded-xl border border-gray-200 bg-white p-6 sm:p-8 shadow-lg">
+      <div class="mt-12 sm:mt-16 mx-auto max-w-2xl rounded-2xl glass-card p-8 sm:p-10 shadow-premium-lg hover-lift">
         <div class="text-center">
-          <h3 class="text-lg font-semibold text-gray-900">Get started in 60 seconds</h3>
-          <div class="mt-4 sm:mt-6 rounded-lg bg-gray-900 p-4 sm:p-6 font-mono text-xs sm:text-sm text-gray-200 overflow-x-auto">
-            <div><span class="text-gray-500">$</span> git clone https://github.com/kamathhrishi/sourcemapr.git</div>
-            <div><span class="text-gray-500">$</span> cd sourcemapr && pip install -e .</div>
+          <h3 class="text-xl font-semibold text-gray-900">Get started in 60 seconds</h3>
+          <div class="mt-6 sm:mt-8 rounded-xl glass-dark p-6 sm:p-8 font-mono text-xs sm:text-sm text-gray-200 overflow-x-auto shadow-premium">
+            <div><span class="text-gray-500">$</span> pip install sourcemapr</div>
             <div><span class="text-gray-500">$</span> sourcemapr server</div>
-            <div class="mt-2 text-emerald-400">Server running at http://localhost:5000</div>
+            <div class="mt-3 text-emerald-400">Server running at http://localhost:5000</div>
           </div>
-          <div class="mt-4 sm:mt-6 flex flex-col sm:flex-row justify-center gap-3">
-            <a href="https://github.com/kamathhrishi/sourcemapr" class="rounded-lg bg-gray-900 px-6 py-2 text-sm font-semibold text-white hover:bg-gray-800 transition-colors">
+          <div class="mt-6 sm:mt-8 flex flex-col sm:flex-row justify-center gap-4">
+            <a href="https://github.com/kamathhrishi/sourcemapr" class="rounded-xl bg-gray-900 px-6 py-3 text-sm font-semibold text-white hover:bg-gray-800 transition-all duration-200 shadow-lg hover:shadow-xl">
               View on GitHub
             </a>
-            <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="rounded-lg border border-gray-300 bg-white px-6 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 transition-colors">
+            <a href="https://github.com/kamathhrishi/sourcemapr#readme" class="rounded-xl glass px-6 py-3 text-sm font-semibold text-gray-900 hover:bg-white/90 transition-all duration-200 shadow-sm hover:shadow-md">
               Read docs
             </a>
           </div>
         </div>
       </div>
 
-      <div class="mt-8 sm:mt-12 flex flex-wrap justify-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
-        <span class="rounded-full bg-gray-100 px-4 py-1.5">MIT License</span>
-        <span class="rounded-full bg-gray-100 px-4 py-1.5">Local-first</span>
-        <span class="rounded-full bg-gray-100 px-4 py-1.5">SQLite storage</span>
-        <span class="rounded-full bg-gray-100 px-4 py-1.5">Zero config</span>
+      <div class="mt-10 sm:mt-12 flex flex-wrap justify-center gap-3 text-xs sm:text-sm text-gray-600">
+        <a href="https://pypi.org/project/sourcemapr/" class="rounded-full glass px-5 py-2 shadow-sm hover:bg-white/90 transition-all">PyPI v0.1.0</a>
+        <span class="rounded-full glass px-5 py-2 shadow-sm">MIT License</span>
+        <span class="rounded-full glass px-5 py-2 shadow-sm">Local-first</span>
+        <span class="rounded-full glass px-5 py-2 shadow-sm">SQLite storage</span>
+        <span class="rounded-full glass px-5 py-2 shadow-sm">Zero config</span>
         </div>
     </div>
   </section>
 
   <!-- Footer -->
-  <footer class="border-t border-gray-200 bg-white py-8 sm:py-12">
+  <footer class="border-t border-white/20 glass py-10 sm:py-14">
     <div class="mx-auto max-w-7xl px-4 sm:px-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="text-xs sm:text-sm text-gray-600">
@@ -572,17 +638,17 @@ stop_tracing()</code></pre>
       document.getElementById('code-langchain').classList.add('hidden');
 
       // Reset all tab styles
-      document.getElementById('tab-llamaindex').className = 'inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200';
-      document.getElementById('tab-langchain').className = 'inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200';
+      document.getElementById('tab-llamaindex').className = 'inline-flex items-center gap-2 rounded-xl glass px-5 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 shadow-sm hover:shadow-md hover:bg-white/90';
+      document.getElementById('tab-langchain').className = 'inline-flex items-center gap-2 rounded-xl glass px-5 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 shadow-sm hover:shadow-md hover:bg-white/90';
 
       // Show selected tab
       document.getElementById('code-' + tab).classList.remove('hidden');
 
       // Style active tab
       if (tab === 'llamaindex') {
-        document.getElementById('tab-llamaindex').className = 'inline-flex items-center gap-2 rounded-lg bg-purple-100 px-4 py-2 text-sm font-medium text-purple-700 transition hover:bg-purple-200';
+        document.getElementById('tab-llamaindex').className = 'inline-flex items-center gap-2 rounded-xl glass px-5 py-2.5 text-sm font-medium text-purple-700 transition-all duration-200 shadow-md hover:shadow-md hover:bg-white/90 bg-white/90';
       } else {
-        document.getElementById('tab-langchain').className = 'inline-flex items-center gap-2 rounded-lg bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-200';
+        document.getElementById('tab-langchain').className = 'inline-flex items-center gap-2 rounded-xl glass px-5 py-2.5 text-sm font-medium text-emerald-700 transition-all duration-200 shadow-md hover:shadow-md hover:bg-white/90 bg-white/90';
       }
     }
 
@@ -605,6 +671,11 @@ stop_tracing()</code></pre>
         document.getElementById('quick-tab-langchain').className = 'inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-200';
       }
     }
+
+    // Set default tab to LlamaIndex on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      showTab('llamaindex');
+    });
   </script>
 </body>
 </html>

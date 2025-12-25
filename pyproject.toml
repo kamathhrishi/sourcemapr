@@ -7,15 +7,14 @@ name = "sourcemapr"
 version = "0.1.0"
 description = "RAG Observability Platform - Trace, debug and understand your RAG pipelines"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Hrishikesh Kamath", email = "kamathhrishi@gmail.com"}
 ]
 keywords = ["rag", "observability", "llm", "llamaindex", "tracing", "debugging"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
