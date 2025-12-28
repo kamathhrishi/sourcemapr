@@ -11,6 +11,7 @@ import {
   Highlighter,
   ZoomIn,
   ZoomOut,
+  Eye,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -36,6 +37,8 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
     sidebarPage,
     sidebarViewMode,
     highlightChunkText,
+    highlightChunkIdx,
+    highlightAnchors,
     closeSourceSidebar,
     setSidebarViewMode,
     setSidebarPage,
@@ -234,15 +237,35 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
     return merged
   }, [splitIntoSentences, calculateSimilarityScore])
 
-  // Highlight text in content with fallback to best matching region
-  const highlightTextInContent = useCallback((text: string) => {
+  // Normalize text by removing extra whitespace for fuzzy comparison
+  const normalizeForComparison = useCallback((str: string): string => {
+    return str.toLowerCase().replace(/[\s\n\r\t]+/g, ' ').trim()
+  }, [])
+
+  // Highlight text in content - prefer position indices, fallback to text matching
+  const highlightTextInContent = useCallback((text: string, pageStartOffset: number = 0) => {
     if (!highlightChunkText) return text
 
-    // First try: exact match with flexible whitespace
+    // BEST: Use position indices if available (most accurate)
+    if (highlightChunkIdx && highlightChunkIdx.start != null && highlightChunkIdx.end != null) {
+      // Adjust indices relative to current page offset
+      const relStart = highlightChunkIdx.start - pageStartOffset
+      const relEnd = highlightChunkIdx.end - pageStartOffset
+
+      // Check if the chunk is within this text segment
+      if (relStart >= 0 && relStart < text.length && relEnd > 0 && relEnd <= text.length) {
+        const before = text.slice(0, relStart)
+        const match = text.slice(relStart, relEnd)
+        const after = text.slice(relEnd)
+        return `${before}<mark class="chunk-highlight">${match}</mark>${after}`
+      }
+    }
+
+    // FALLBACK 1: exact match with flexible whitespace (any whitespace matches any whitespace)
     const escaped = highlightChunkText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const normalizedSearch = escaped.replace(/\s+/g, '\\s+')
+    const normalizedSearch = escaped.replace(/\s+/g, '[\\s\\n\\r\\t]+')
     try {
-      const regex = new RegExp(`(${normalizedSearch})`, 'gi')
+      const regex = new RegExp(`(${normalizedSearch})`, 'gis')
       const exactMatch = text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
       if (exactMatch !== text) {
         return exactMatch // Found exact match
@@ -251,11 +274,11 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
       // Continue to fallback
     }
 
-    // Second try: match the first 100 characters (chunk might be truncated)
+    // FALLBACK 2: match the first 100 characters with flexible whitespace
     if (highlightChunkText.length > 100) {
-      const shortChunk = highlightChunkText.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+      const shortChunk = highlightChunkText.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '[\\s\\n\\r\\t]+')
       try {
-        const regex = new RegExp(`(${shortChunk})`, 'gi')
+        const regex = new RegExp(`(${shortChunk})`, 'gis')
         const shortMatch = text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
         if (shortMatch !== text) {
           return shortMatch
@@ -265,49 +288,51 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
       }
     }
 
-    // Third try: match significant phrases (2+ consecutive words)
-    const chunkWords = highlightChunkText.toLowerCase().split(/\s+/).filter(w => w.length > 2)
-    for (let len = Math.min(6, chunkWords.length); len >= 2; len--) {
-      for (let i = 0; i <= chunkWords.length - len; i++) {
-        const phrase = chunkWords.slice(i, i + len).join('\\s+')
+    // FALLBACK 3: Aggressive word-by-word highlighting
+    // Extract ALL words from chunk and highlight every match
+    const chunkWords = highlightChunkText.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 3)
+
+    // Remove common stop words for cleaner highlighting
+    const stopWords = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'has', 'her', 'was', 'one', 'our', 'out', 'with', 'this', 'that', 'from', 'have', 'been', 'will', 'would', 'could', 'should', 'into', 'more', 'some', 'such', 'than', 'them', 'then', 'these', 'they', 'were', 'what', 'when', 'where', 'which', 'while', 'your'])
+    const meaningfulWords = chunkWords.filter(w => !stopWords.has(w) && w.length >= 3)
+
+    if (meaningfulWords.length > 0) {
+      let result = text
+      let hasMatch = false
+
+      // Sort by length (longer words first) to prioritize more specific matches
+      const sortedWords = [...new Set(meaningfulWords)].sort((a, b) => b.length - a.length)
+
+      for (const word of sortedWords.slice(0, 25)) {
         try {
-          const phraseRegex = new RegExp(`(${phrase})`, 'gi')
-          const phraseMatch = text.replace(phraseRegex, '<mark class="chunk-highlight">$1</mark>')
-          if (phraseMatch !== text) {
-            return phraseMatch
+          const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          // Match word with flexible boundaries (allow partial matches for longer words)
+          const wordRegex = word.length >= 5
+            ? new RegExp(`(${escaped})`, 'gi')
+            : new RegExp(`\\b(${escaped})\\b`, 'gi')
+          const newResult = result.replace(wordRegex, '<mark class="chunk-highlight-word">$1</mark>')
+          if (newResult !== result) {
+            result = newResult
+            hasMatch = true
           }
         } catch {
-          // Continue
+          // Skip invalid patterns
         }
+      }
+
+      if (hasMatch) {
+        return result
       }
     }
 
-    // Fourth try: match any significant single words (longer ones first)
-    const significantWords = chunkWords.filter(w => w.length >= 6).sort((a, b) => b.length - a.length)
-    for (const word of significantWords.slice(0, 5)) {
-      try {
-        const wordRegex = new RegExp(`\\b(${word})\\b`, 'gi')
-        if (wordRegex.test(text)) {
-          // Found a match - now highlight the sentence containing it
-          const sentences = text.split(/(?<=[.!?])\s+/)
-          for (let i = 0; i < sentences.length; i++) {
-            if (new RegExp(`\\b${word}\\b`, 'gi').test(sentences[i] ?? '')) {
-              sentences[i] = `<mark class="chunk-highlight-fuzzy">${sentences[i]}</mark>`
-              return sentences.join(' ')
-            }
-          }
-        }
-      } catch {
-        // Continue
-      }
-    }
-
-    // Fallback: find best matching sentences/regions and highlight them
+    // FALLBACK 4: find best matching sentences/regions
     const chunkWordMap = getSignificantWords(highlightChunkText)
     const bestRegions = findBestMatchingRegions(text, chunkWordMap)
 
     if (bestRegions.length > 0) {
-      // Build result with multiple highlights
       let result = ''
       let lastEnd = 0
 
@@ -320,8 +345,25 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
       return result
     }
 
+    // FALLBACK 5: Ultimate - highlight ANY word 3+ chars that appears in both
+    if (chunkWords.length > 0) {
+      let result = text
+      for (const word of chunkWords.slice(0, 30)) {
+        try {
+          const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          const wordRegex = new RegExp(`(${escaped})`, 'gi')
+          result = result.replace(wordRegex, '<mark class="chunk-highlight-word">$1</mark>')
+        } catch {
+          // Skip
+        }
+      }
+      if (result !== text) {
+        return result
+      }
+    }
+
     return text
-  }, [highlightChunkText, getSignificantWords, findBestMatchingRegions])
+  }, [highlightChunkText, highlightChunkIdx, getSignificantWords, findBestMatchingRegions, normalizeForComparison])
 
   // Scroll to highlight (supports exact, word-based, and fuzzy highlights)
   useEffect(() => {
@@ -344,7 +386,7 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
     setIframeLoaded(false)
   }, [sidebarDocId, sidebarViewMode])
 
-  // Function to highlight in iframe
+  // Function to highlight in iframe using HTML indices when available
   const highlightInIframe = useCallback(() => {
     if (!highlightChunkText || !isHtml || !iframeRef.current) return
 
@@ -362,6 +404,12 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
           parent.normalize()
         }
       })
+      // Also remove parent highlights
+      const oldParentHighlights = iframeDoc.querySelectorAll('.sourcemapr-highlight-parent')
+      oldParentHighlights.forEach((el) => {
+        (el as HTMLElement).style.backgroundColor = ''
+        el.classList.remove('sourcemapr-highlight-parent')
+      })
 
       let style = iframeDoc.getElementById('sourcemapr-highlight-style')
       if (!style) {
@@ -371,34 +419,230 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
         iframeDoc.head.appendChild(style)
       }
 
-      // Normalize search text
-      const searchText = highlightChunkText.replace(/\s+/g, ' ').trim()
-      const searchLower = searchText.toLowerCase()
-
-      // Find and highlight the matching text precisely
+      // Collect all text nodes with their index for searching
+      const textNodes: { node: Text; text: string; idx: number }[] = []
       const walker = iframeDoc.createTreeWalker(iframeDoc.body, NodeFilter.SHOW_TEXT, null)
       let node
+      let nodeIdx = 0
+      while ((node = walker.nextNode())) {
+        const text = node.textContent ?? ''
+        if (text.trim()) {
+          textNodes.push({ node: node as Text, text, idx: nodeIdx })
+          nodeIdx++
+        }
+      }
+
+      // For rendered HTML in iframe, use text-based matching
+      const searchText = highlightChunkText.replace(/\s+/g, ' ').trim()
+      if (!searchText) return
+
+      // DEBUG
+      console.log('[SourcemapR] Highlighting chunk:', searchText.slice(0, 50) + '...')
+      console.log('[SourcemapR] Anchors:', highlightAnchors)
+      console.log('[SourcemapR] Total text nodes:', textNodes.length)
+
+      // Build full concatenated text from ALL nodes (needed for anchor search)
+      let fullConcatenatedText = ''
+      const fullNodeOffsets: { node: Text; start: number; end: number; idx: number }[] = []
+
+      for (let i = 0; i < textNodes.length; i++) {
+        const item = textNodes[i]
+        if (!item) continue
+        const start = fullConcatenatedText.length
+        fullConcatenatedText += item.text + ' '
+        fullNodeOffsets.push({ node: item.node, start, end: fullConcatenatedText.length - 1, idx: i })
+      }
+
+      const fullConcatenatedLower = fullConcatenatedText.toLowerCase()
+
+      // Helper: extract distinctive words (4+ chars, not common words)
+      const getDistinctiveWords = (text: string): string[] => {
+        const stopWords = new Set(['this', 'that', 'with', 'from', 'have', 'been', 'were', 'they', 'their', 'which', 'would', 'could', 'should', 'about', 'these', 'those', 'other', 'into', 'more', 'some', 'such', 'than', 'them', 'then', 'there', 'when', 'where', 'will', 'your'])
+        return text.toLowerCase()
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .split(/\s+/)
+          .filter(w => w.length >= 4 && !stopWords.has(w))
+      }
+
+      // Helper: count how many words from a set appear in a text region
+      const countWordMatches = (words: string[], text: string): number => {
+        let count = 0
+        for (const word of words) {
+          if (text.includes(word)) count++
+        }
+        return count
+      }
+
+      // Get distinctive words from chunk and anchors
+      const chunkWords = getDistinctiveWords(searchText)
+      const prevAnchorWords = highlightAnchors?.prevAnchor ? getDistinctiveWords(highlightAnchors.prevAnchor) : []
+      const nextAnchorWords = highlightAnchors?.nextAnchor ? getDistinctiveWords(highlightAnchors.nextAnchor) : []
+
+      console.log('[SourcemapR] Chunk words:', chunkWords.slice(0, 5))
+      console.log('[SourcemapR] Prev anchor words:', prevAnchorWords.slice(0, 5))
+      console.log('[SourcemapR] Next anchor words:', nextAnchorWords.slice(0, 5))
+
+      // Find ALL candidate positions where chunk words cluster
+      const candidatePositions: { pos: number; chunkScore: number; contextScore: number }[] = []
+      const windowSize = 1000 // Window to look for chunk
+
+      // Find positions of each chunk word
+      for (const word of chunkWords.slice(0, 5)) {
+        let searchPos = 0
+        while (searchPos < fullConcatenatedLower.length) {
+          const idx = fullConcatenatedLower.indexOf(word, searchPos)
+          if (idx === -1) break
+
+          // Check if we already have a nearby candidate
+          const existingNearby = candidatePositions.find(c => Math.abs(c.pos - idx) < windowSize)
+          if (!existingNearby) {
+            candidatePositions.push({ pos: idx, chunkScore: 0, contextScore: 0 })
+          }
+          searchPos = idx + word.length
+        }
+      }
+
+      console.log('[SourcemapR] Found', candidatePositions.length, 'candidate positions')
+
+      // Score each candidate by chunk word matches AND surrounding context matches
+      for (const candidate of candidatePositions) {
+        const regionStart = Math.max(0, candidate.pos - 200)
+        const regionEnd = Math.min(fullConcatenatedLower.length, candidate.pos + windowSize)
+        const region = fullConcatenatedLower.slice(regionStart, regionEnd)
+
+        // Score: how many chunk words appear in this region
+        candidate.chunkScore = countWordMatches(chunkWords, region)
+
+        // Context score: check if prev anchor words appear BEFORE and next anchor words appear AFTER
+        const beforeRegion = fullConcatenatedLower.slice(Math.max(0, candidate.pos - 1500), candidate.pos)
+        const afterRegion = fullConcatenatedLower.slice(candidate.pos + 500, Math.min(fullConcatenatedLower.length, candidate.pos + 2000))
+
+        const prevScore = countWordMatches(prevAnchorWords, beforeRegion)
+        const nextScore = countWordMatches(nextAnchorWords, afterRegion)
+        candidate.contextScore = prevScore + nextScore
+      }
+
+      // Sort by context score first (surrounding chunks match), then by chunk score
+      candidatePositions.sort((a, b) => {
+        if (b.contextScore !== a.contextScore) return b.contextScore - a.contextScore
+        return b.chunkScore - a.chunkScore
+      })
+
+      console.log('[SourcemapR] Top candidates:', candidatePositions.slice(0, 3).map(c =>
+        `pos=${c.pos}, chunk=${c.chunkScore}, context=${c.contextScore}`
+      ))
+
       let highlighted = false
-      while ((node = walker.nextNode()) && !highlighted) {
-        const nodeText = node.textContent ?? ''
-        const normalizedText = nodeText.toLowerCase()
-        const localMatch = normalizedText.indexOf(searchLower.slice(0, Math.min(50, searchLower.length)))
+      let bestMatchNodeIdx = -1
 
-        if (localMatch !== -1) {
-          const range = iframeDoc.createRange()
-          const matchEnd = Math.min(localMatch + searchText.length, nodeText.length)
-          range.setStart(node, localMatch)
-          range.setEnd(node, matchEnd)
+      // Use the best candidate position
+      if (candidatePositions.length > 0 && candidatePositions[0]) {
+        const bestCandidate = candidatePositions[0]
 
-          const highlightEl = iframeDoc.createElement('span')
-          highlightEl.className = 'sourcemapr-highlight'
-          try {
-            range.surroundContents(highlightEl)
-            highlightEl.scrollIntoView({ behavior: 'instant', block: 'center' })
-            highlighted = true
-          } catch {
-            // Range spans multiple nodes
-            node.parentElement?.scrollIntoView({ behavior: 'instant', block: 'center' })
+        // Only use if it has reasonable scores
+        if (bestCandidate.chunkScore >= 2 || bestCandidate.contextScore >= 2) {
+          // Find the node at this position
+          for (const offset of fullNodeOffsets) {
+            if (offset.start <= bestCandidate.pos && offset.end >= bestCandidate.pos) {
+              bestMatchNodeIdx = offset.idx
+              break
+            }
+          }
+        }
+      }
+
+      // If we found a good match via context, highlight ONLY the chunk (not anchors)
+      if (bestMatchNodeIdx >= 0) {
+        console.log('[SourcemapR] Best match at node index:', bestMatchNodeIdx)
+
+        // Get the position in concatenated text where match starts
+        const matchOffset = fullNodeOffsets[bestMatchNodeIdx]
+        if (matchOffset) {
+          // Find the exact chunk text in the region around the match
+          const searchStart = Math.max(0, matchOffset.start - 100)
+          const searchEnd = Math.min(fullConcatenatedLower.length, matchOffset.start + searchText.length + 500)
+          const searchRegion = fullConcatenatedLower.slice(searchStart, searchEnd)
+
+          // Try to find exact chunk text match
+          const chunkLower = searchText.slice(0, 200).toLowerCase().replace(/\s+/g, ' ')
+          const exactIdx = searchRegion.indexOf(chunkLower.slice(0, 50))
+
+          if (exactIdx !== -1) {
+            // Find nodes that contain the actual chunk text (not anchors)
+            const chunkStartInFull = searchStart + exactIdx
+            const chunkEndInFull = chunkStartInFull + Math.min(searchText.length, 500)
+
+            for (const offset of fullNodeOffsets) {
+              // Only highlight nodes within the chunk bounds
+              if (offset.end >= chunkStartInFull && offset.start <= chunkEndInFull) {
+                try {
+                  const parent = offset.node.parentElement
+                  if (parent) {
+                    parent.classList.add('sourcemapr-highlight-parent')
+                    parent.style.backgroundColor = '#fef08a'
+                  }
+                } catch { /* ignore */ }
+              }
+            }
+          } else {
+            // Fallback: just highlight the match node itself
+            const parent = matchOffset.node.parentElement
+            if (parent) {
+              parent.classList.add('sourcemapr-highlight-parent')
+              parent.style.backgroundColor = '#fef08a'
+            }
+          }
+        }
+
+        // Scroll to the match
+        const scrollNode = textNodes[bestMatchNodeIdx]
+        if (scrollNode) {
+          scrollNode.node.parentElement?.scrollIntoView({ behavior: 'instant', block: 'center' })
+          highlighted = true
+        }
+      }
+
+      // Fallback: try single node exact match
+      if (!highlighted) {
+        const searchLower = searchText.slice(0, 100).toLowerCase()
+        for (const { node: textNode, text } of textNodes) {
+          if (highlighted) break
+          const normalizedText = text.replace(/\s+/g, ' ').toLowerCase()
+          const matchIdx = normalizedText.indexOf(searchLower.slice(0, 50))
+
+          if (matchIdx !== -1) {
+            try {
+              const range = iframeDoc.createRange()
+              const highlightLen = Math.min(searchText.length, text.length - matchIdx)
+              range.setStart(textNode, matchIdx)
+              range.setEnd(textNode, matchIdx + highlightLen)
+
+              const highlightEl = iframeDoc.createElement('span')
+              highlightEl.className = 'sourcemapr-highlight'
+              range.surroundContents(highlightEl)
+              highlightEl.scrollIntoView({ behavior: 'instant', block: 'center' })
+              highlighted = true
+            } catch {
+              textNode.parentElement?.scrollIntoView({ behavior: 'instant', block: 'center' })
+              highlighted = true
+            }
+          }
+        }
+      }
+
+      // Final fallback: try matching any 2+ distinctive words
+      if (!highlighted) {
+        for (const { node: textNode, text } of textNodes) {
+          if (highlighted) break
+          const lowerText = text.toLowerCase()
+          const matchCount = chunkWords.filter(w => lowerText.includes(w)).length
+          if (matchCount >= 2) {
+            textNode.parentElement?.scrollIntoView({ behavior: 'instant', block: 'center' })
+            const parent = textNode.parentElement
+            if (parent) {
+              parent.style.backgroundColor = '#fef08a'
+              parent.classList.add('sourcemapr-highlight-parent')
+            }
             highlighted = true
           }
         }
@@ -406,7 +650,7 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
     } catch (e) {
       console.log('Could not highlight in iframe:', e)
     }
-  }, [highlightChunkText, isHtml])
+  }, [highlightChunkText, highlightAnchors, isHtml])
 
   // Highlight when iframe loads or when switching to source view with loaded iframe
   useEffect(() => {
@@ -540,14 +784,25 @@ export function SourceSidebar({ data }: SourceSidebarProps) {
           >
             Parsed
           </Button>
-          {(isPdf || isHtml) && (
+          {isHtml && (
             <Button
               variant={sidebarViewMode === 'source' ? 'default' : 'outline'}
               size="sm"
               className="h-6 text-xs"
               onClick={() => setSidebarViewMode('source')}
             >
-              {isPdf ? 'PDF' : 'HTML'}
+              <Eye className="w-3 h-3 mr-1" />
+              Original
+            </Button>
+          )}
+          {isPdf && (
+            <Button
+              variant={sidebarViewMode === 'source' ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 text-xs"
+              onClick={() => setSidebarViewMode('source')}
+            >
+              PDF
             </Button>
           )}
           <div className="w-px h-4 bg-apple-border mx-1" />

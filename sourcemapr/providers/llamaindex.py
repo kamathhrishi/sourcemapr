@@ -287,22 +287,42 @@ def _get_node_doc_id(node, doc_id_to_filename, default_filename, current_doc_fil
     return doc_id
 
 
-def _build_html_parsed_text(chunks_by_doc, source_file_paths, store):
-    """Build and store parsed text for HTML files from chunks."""
+def _build_html_parsed_text(chunks_by_doc, source_file_paths, store, html_page_positions=None):
+    """Build and store parsed text for HTML files from chunks.
+
+    Args:
+        chunks_by_doc: Dict mapping doc_id to list of chunk dicts
+        source_file_paths: Dict mapping doc_id to file path
+        store: TraceStore instance
+        html_page_positions: Optional dict mapping doc_id to page_positions dict
+    """
     for doc_id, chunks in chunks_by_doc.items():
         file_path = source_file_paths.get(doc_id, '')
         file_ext = file_path.lower().split('.')[-1] if file_path else ''
-        
+
         if file_ext in ('htm', 'html', 'xhtml') and chunks:
             sorted_chunks = sorted(chunks, key=lambda x: x['index'])
-            
+
+            # If we have page positions from HTML parsing, use them
+            page_positions = None
+            if html_page_positions and doc_id in html_page_positions:
+                page_positions = html_page_positions[doc_id]
+
+            # Assign page numbers to chunks based on position
+            if page_positions:
+                for chunk in sorted_chunks:
+                    start_idx = chunk.get('start_char_idx')
+                    if start_idx is not None:
+                        chunk['page_number'] = _get_page_for_position(start_idx, page_positions)
+
+            # Group chunks by page
             pages_content = {}
             for chunk in sorted_chunks:
                 page_num = chunk.get('page_number') or 1
                 if page_num not in pages_content:
                     pages_content[page_num] = []
                 pages_content[page_num].append(chunk['text'])
-            
+
             if len(pages_content) > 1:
                 parsed_parts = []
                 for page_num in sorted(pages_content.keys()):
@@ -310,17 +330,36 @@ def _build_html_parsed_text(chunks_by_doc, source_file_paths, store):
                 parsed_text = '\n\n--- PAGE BREAK ---\n\n'.join(parsed_parts)
             else:
                 parsed_text = '\n\n'.join([c['text'] for c in sorted_chunks])
-            
+
             store.log_parsed(
                 doc_id=doc_id,
                 filename=doc_id,
                 text=parsed_text
             )
-            print(f"[SourcemapR] Built parsed text for HTML: {doc_id} ({len(chunks)} chunks)")
+            print(f"[SourcemapR] Built parsed text for HTML: {doc_id} ({len(chunks)} chunks, {len(pages_content)} pages)")
+
+
+def _get_page_for_position(position, page_positions):
+    """Get page number for a text position.
+
+    Args:
+        position: Character position in extracted text
+        page_positions: Dict mapping page_num -> (start, end)
+
+    Returns:
+        Page number (1-indexed)
+    """
+    if not page_positions:
+        return 1
+    for page_num, (start, end) in sorted(page_positions.items()):
+        if start <= position < end:
+            return page_num
+    # Return last page if beyond end
+    return max(page_positions.keys()) if page_positions else 1
 
 
 def _extract_page_from_text(text):
-    """Extract page number from SEC filing text patterns."""
+    """Extract page number from text patterns (fallback method)."""
     if not text:
         return None
     # Pattern 1: Page number at start of chunk (e.g., "49\n\nTesla, Inc.")
@@ -342,10 +381,14 @@ def _extract_page_from_text(text):
 
 class LlamaIndexProvider(BaseProvider):
     """LlamaIndex instrumentation provider."""
-    
+
     name = "llamaindex"
     # Class variable to track current document context for chunk linking
     _current_doc_filename = None
+    # Store raw HTML content for position mapping during chunk creation
+    _raw_html_content: Dict[str, str] = {}
+    # Store loader text for position mapping
+    _loader_text: Dict[str, str] = {}
     
     def __init__(self, store: TraceStore):
         super().__init__(store)
@@ -481,40 +524,104 @@ class LlamaIndexProvider(BaseProvider):
             original_load = FlatReader.load_data
             store = self.store
             register_framework = self._register_framework
-            
+
             def patched_load(self_reader, path, *args, **kwargs):
                 register_framework()
                 span = store.start_span("load_documents", kind="document")
                 try:
                     result = original_load(self_reader, path, *args, **kwargs)
-                    
+
                     filepath = Path(path) if not isinstance(path, Path) else path
                     abs_path = os.path.abspath(filepath)
                     filename = filepath.name
                     file_ext = filepath.suffix.lower()
-                    
-                    store.end_span(span, attributes={
-                        "num_files": 1,
-                        "num_pages": len(result),
-                        "filename": filename,
-                    })
-                    
+
                     # Inject file_name metadata into documents for chunk linking
                     for doc in result:
                         if not doc.metadata:
                             doc.metadata = {}
                         doc.metadata['file_name'] = filename
                         doc.metadata['file_path'] = abs_path
-                    
+
                     # Set current document context for chunk linking
                     LlamaIndexProvider._current_doc_filename = filename
-                    
-                    # For HTML files, don't store raw HTML as parsed text
+
+                    # For HTML files: Use loader's text directly (so chunk indices match for highlighting)
+                    # But also parse HTML to get page positions for page number detection
                     if file_ext in ('.htm', '.html', '.xhtml'):
-                        parsed_text = None
-                    else:
-                        parsed_text = "\n\n--- PAGE BREAK ---\n\n".join([doc.text for doc in result])
-                    
+                        try:
+                            from sourcemapr.utils.html_parser import HTMLParser
+
+                            # Get the loader's extracted text (what the splitter will see)
+                            loader_text = "\n\n".join([doc.text for doc in result])
+
+                            # Parse raw HTML to get page positions for chunk page detection
+                            with open(abs_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                html_content = f.read()
+
+                            # Store raw HTML and loader text for position mapping during chunk creation
+                            LlamaIndexProvider._raw_html_content[filename] = html_content
+                            LlamaIndexProvider._loader_text[filename] = loader_text
+
+                            parser = HTMLParser(html_content, filename)
+                            page_count = parser.page_count
+
+                            # Build page positions mapping for the LOADER's text
+                            # Scale page positions from HTML parser to loader text positions
+                            html_text_len = len(parser.extracted_text)
+                            loader_text_len = len(loader_text)
+
+                            if not hasattr(LlamaIndexProvider, '_html_page_positions'):
+                                LlamaIndexProvider._html_page_positions = {}
+
+                            if html_text_len > 0:
+                                scale = loader_text_len / html_text_len
+                                scaled_positions = {}
+                                for page_num, (start, end) in parser.page_positions.items():
+                                    scaled_start = int(start * scale)
+                                    scaled_end = int(end * scale)
+                                    scaled_positions[page_num] = (scaled_start, scaled_end)
+                                LlamaIndexProvider._html_page_positions[filename] = scaled_positions
+                            else:
+                                LlamaIndexProvider._html_page_positions[filename] = {1: (0, loader_text_len)}
+
+                            store.end_span(span, attributes={
+                                "num_files": 1,
+                                "num_pages": page_count,
+                                "filename": filename,
+                            })
+
+                            store.log_document(
+                                doc_id=filename,
+                                filename=filename,
+                                file_path=abs_path,
+                                text_length=len(loader_text),
+                                num_pages=page_count
+                            )
+
+                            # Store the LOADER's text so chunk indices match for highlighting!
+                            store.log_parsed(
+                                doc_id=filename,
+                                filename=filename,
+                                text=loader_text
+                            )
+
+                            print(f"[SourcemapR] FlatReader loaded HTML: {filename} ({page_count} pages, {len(loader_text):,} chars)")
+                            return result
+
+                        except Exception as e:
+                            print(f"[SourcemapR] HTML parsing fallback: {e}")
+                            # Fall through to default handling
+
+                    # Default handling for non-HTML files
+                    store.end_span(span, attributes={
+                        "num_files": 1,
+                        "num_pages": len(result),
+                        "filename": filename,
+                    })
+
+                    parsed_text = "\n\n--- PAGE BREAK ---\n\n".join([doc.text for doc in result])
+
                     store.log_document(
                         doc_id=filename,
                         filename=filename,
@@ -522,12 +629,11 @@ class LlamaIndexProvider(BaseProvider):
                         text_length=len(result[0].text) if result else 0,
                         num_pages=len(result)
                     )
-                    
-                    if parsed_text:
-                        store.log_parsed(
-                            doc_id=filename,
-                            filename=filename,
-                            text=parsed_text
+
+                    store.log_parsed(
+                        doc_id=filename,
+                        filename=filename,
+                        text=parsed_text
                         )
                     
                     print(f"[SourcemapR] FlatReader loaded: {filename} ({len(result)} docs, path: {abs_path})")
@@ -546,71 +652,140 @@ class LlamaIndexProvider(BaseProvider):
         try:
             from llama_index.core.node_parser.interface import NodeParser
             store = self.store
-            
+
             if hasattr(NodeParser.get_nodes_from_documents, '_sourcemapr_patched'):
                 return
-            
+
             original_parse = NodeParser.get_nodes_from_documents
-            
+
             def patched_parse(self_parser, documents, *args, **kwargs):
                 parser_name = self_parser.__class__.__name__
                 span = store.start_span("chunk_documents", kind="chunking")
                 try:
                     source_filenames, source_file_paths, doc_id_to_filename, default_filename = _extract_doc_metadata(documents)
-                    
+
                     result = original_parse(self_parser, documents, *args, **kwargs)
                     store.end_span(span, attributes={
                         "num_nodes": len(result),
                         "parser": parser_name,
                         "chunk_size": getattr(self_parser, 'chunk_size', 0),
                     })
-                    
+
                     chunks_by_doc = {}
-                    
+
+                    # Get HTML page positions if available
+                    html_page_positions = getattr(LlamaIndexProvider, '_html_page_positions', {})
+
+                    # First pass: collect all chunk data in order
+                    all_chunk_data = []
+
                     for i, node in enumerate(result):
                         doc_id = _get_node_doc_id(
                             node, doc_id_to_filename, default_filename,
                             LlamaIndexProvider._current_doc_filename
                         )
-                        
+
                         metadata = node.metadata or {}
                         page_number = int(metadata.get('page_label')) if metadata.get('page_label') else None
-                        
+
+                        # For HTML files, try to get page from position
+                        start_char_idx = getattr(node, 'start_char_idx', None)
+                        end_char_idx = getattr(node, 'end_char_idx', None)
+                        if page_number is None and doc_id and doc_id in html_page_positions and start_char_idx is not None:
+                            page_number = _get_page_for_position(start_char_idx, html_page_positions[doc_id])
+
+                        # Calculate HTML indices for Original view highlighting
+                        html_start_idx = None
+                        html_end_idx = None
+                        file_path = source_file_paths.get(doc_id, '')
+                        file_ext = file_path.lower().split('.')[-1] if file_path else ''
+                        if file_ext in ('htm', 'html', 'xhtml') and doc_id in LlamaIndexProvider._raw_html_content:
+                            try:
+                                from sourcemapr.utils.html_text_extractor import get_html_positions_for_chunk
+                                raw_html = LlamaIndexProvider._raw_html_content[doc_id]
+                                loader_text = LlamaIndexProvider._loader_text.get(doc_id, '')
+
+                                # Use position-tracking extractor for accurate mapping
+                                if start_char_idx is not None and loader_text:
+                                    html_start_idx, html_end_idx = get_html_positions_for_chunk(
+                                        raw_html,
+                                        loader_text,
+                                        start_char_idx,
+                                        end_char_idx or start_char_idx + len(node.text)
+                                    )
+                            except Exception:
+                                # Silently continue if position mapping fails
+                                pass
+
                         if doc_id:
                             if doc_id not in chunks_by_doc:
                                 chunks_by_doc[doc_id] = []
                             chunks_by_doc[doc_id].append({
                                 'index': i,
                                 'text': node.text,
-                                'page_number': page_number
+                                'page_number': page_number,
+                                'start_char_idx': start_char_idx
                             })
-                        
+
+                        # Store chunk data for second pass
+                        all_chunk_data.append({
+                            'chunk_id': node.node_id,
+                            'doc_id': doc_id,
+                            'index': i,
+                            'text': node.text,
+                            'page_number': page_number,
+                            'start_char_idx': start_char_idx,
+                            'end_char_idx': end_char_idx,
+                            'html_start_idx': html_start_idx,
+                            'html_end_idx': html_end_idx,
+                            'metadata': metadata,
+                        })
+
+                    # Second pass: add prev/next anchors and log chunks
+                    ANCHOR_LEN = 50
+                    for i, chunk_data in enumerate(all_chunk_data):
+                        # Get anchor from previous chunk (last N chars)
+                        prev_anchor = None
+                        if i > 0:
+                            prev_text = all_chunk_data[i - 1]['text']
+                            prev_anchor = prev_text[-ANCHOR_LEN:] if len(prev_text) > ANCHOR_LEN else prev_text
+
+                        # Get anchor from next chunk (first N chars)
+                        next_anchor = None
+                        if i < len(all_chunk_data) - 1:
+                            next_text = all_chunk_data[i + 1]['text']
+                            next_anchor = next_text[:ANCHOR_LEN] if len(next_text) > ANCHOR_LEN else next_text
+
                         store.log_chunk(
-                            chunk_id=node.node_id,
-                            doc_id=doc_id,
-                            index=i,
-                            text=node.text,
-                            page_number=page_number,
-                            start_char_idx=getattr(node, 'start_char_idx', None),
-                            end_char_idx=getattr(node, 'end_char_idx', None),
-                            metadata=metadata
+                            chunk_id=chunk_data['chunk_id'],
+                            doc_id=chunk_data['doc_id'],
+                            index=chunk_data['index'],
+                            text=chunk_data['text'],
+                            page_number=chunk_data['page_number'],
+                            start_char_idx=chunk_data['start_char_idx'],
+                            end_char_idx=chunk_data['end_char_idx'],
+                            html_start_idx=chunk_data['html_start_idx'],
+                            html_end_idx=chunk_data['html_end_idx'],
+                            prev_anchor=prev_anchor,
+                            next_anchor=next_anchor,
+                            metadata=chunk_data['metadata']
                         )
-                    
-                    _build_html_parsed_text(chunks_by_doc, source_file_paths, store)
-                    
+
+                    _build_html_parsed_text(chunks_by_doc, source_file_paths, store, html_page_positions)
+
                     print(f"[SourcemapR] {parser_name}: {len(result)} chunks created")
                     return result
                 except Exception as e:
                     store.end_span(span, status="error")
                     raise
-            
+
             patched_parse._sourcemapr_patched = True
             NodeParser.get_nodes_from_documents = patched_parse
             self._original_handlers['NodeParser.get_nodes_from_documents'] = original_parse
             print("[SourcemapR] Patched NodeParser base class (all splitters)")
         except ImportError:
             pass
-        
+
         # Also patch get_base_nodes_and_mappings for UnstructuredElementNodeParser
         self._patch_unstructured_element_parser()
     

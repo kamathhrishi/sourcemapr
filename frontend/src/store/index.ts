@@ -10,6 +10,16 @@ interface HighlightIndices {
   end: number
 }
 
+interface HtmlHighlightIndices {
+  htmlStart: number
+  htmlEnd: number
+}
+
+interface ChunkAnchors {
+  prevAnchor: string | null
+  nextAnchor: string | null
+}
+
 interface AppState {
   // Theme
   isDarkMode: boolean
@@ -38,7 +48,9 @@ interface AppState {
   selectChunk: (id: string | null) => void
   highlightChunkText: string | null
   highlightChunkIdx: HighlightIndices | null
-  setHighlight: (text: string | null, indices?: HighlightIndices | null) => void
+  highlightHtmlIdx: HtmlHighlightIndices | null
+  highlightAnchors: ChunkAnchors | null
+  setHighlight: (text: string | null, indices?: HighlightIndices | null, htmlIndices?: HtmlHighlightIndices | null, anchors?: ChunkAnchors | null) => void
   clearHighlight: () => void
 
   // Query/Trace viewer
@@ -49,7 +61,7 @@ interface AppState {
   sidebarDocId: string | null
   sidebarPage: number
   sidebarViewMode: SidebarViewMode
-  openSourceSidebar: (docId: string, page: number, chunkText?: string, indices?: HighlightIndices | null) => void
+  openSourceSidebar: (docId: string, page: number, chunkText?: string, indices?: HighlightIndices | null, htmlIndices?: HtmlHighlightIndices | null, anchors?: ChunkAnchors | null) => void
   closeSourceSidebar: () => void
   setSidebarViewMode: (mode: SidebarViewMode) => void
   setSidebarPage: (page: number) => void
@@ -77,6 +89,8 @@ const initialState = {
   selectedChunkId: null,
   highlightChunkText: null,
   highlightChunkIdx: null,
+  highlightHtmlIdx: null,
+  highlightAnchors: null,
   selectedTraceId: null,
   sidebarDocId: null,
   sidebarPage: 1,
@@ -114,6 +128,8 @@ export const useAppStore = create<AppState>()(
         selectedChunkId: null,
         highlightChunkText: null,
         highlightChunkIdx: null,
+        highlightHtmlIdx: null,
+        highlightAnchors: null,
         chunksPage: 1,
       }),
       setDocViewMode: (mode) => set({ docViewMode: mode }),
@@ -122,13 +138,17 @@ export const useAppStore = create<AppState>()(
 
       // Chunk selection
       selectChunk: (id) => set({ selectedChunkId: id }),
-      setHighlight: (text, indices) => set({
+      setHighlight: (text, indices, htmlIndices, anchors) => set({
         highlightChunkText: text,
-        highlightChunkIdx: indices ?? null
+        highlightChunkIdx: indices ?? null,
+        highlightHtmlIdx: htmlIndices ?? null,
+        highlightAnchors: anchors ?? null,
       }),
       clearHighlight: () => set({
         highlightChunkText: null,
         highlightChunkIdx: null,
+        highlightHtmlIdx: null,
+        highlightAnchors: null,
         selectedChunkId: null,
       }),
 
@@ -138,18 +158,23 @@ export const useAppStore = create<AppState>()(
         sidebarDocId: null,
       }),
 
-      // Source sidebar
-      openSourceSidebar: (docId, page, chunkText, indices) => set({
+      // Source sidebar - preserve current view mode when switching chunks
+      openSourceSidebar: (docId, page, chunkText, indices, htmlIndices, anchors) => set((state) => ({
         sidebarDocId: docId,
         sidebarPage: page,
         highlightChunkText: chunkText ?? null,
         highlightChunkIdx: indices ?? null,
-        sidebarViewMode: 'parsed',
-      }),
+        highlightHtmlIdx: htmlIndices ?? null,
+        highlightAnchors: anchors ?? null,
+        // Keep current view mode, only default to 'parsed' if sidebar wasn't open
+        sidebarViewMode: state.sidebarDocId ? state.sidebarViewMode : 'parsed',
+      })),
       closeSourceSidebar: () => set({
         sidebarDocId: null,
         highlightChunkText: null,
         highlightChunkIdx: null,
+        highlightHtmlIdx: null,
+        highlightAnchors: null,
       }),
       setSidebarViewMode: (mode) => set({ sidebarViewMode: mode }),
       setSidebarPage: (page) => set({ sidebarPage: page }),

@@ -118,7 +118,7 @@ function ExpandedChunk({
   onCollapse?: () => void
   onCopy: (text: string, id: string) => void
   copiedId: string | null
-  onViewSource: (docId: string, pageNumber?: number | null, chunkText?: string) => void
+  onViewSource: (docId: string, pageNumber?: number | null, chunkText?: string, startCharIdx?: number | null, endCharIdx?: number | null, htmlStartIdx?: number | null, htmlEndIdx?: number | null, prevAnchor?: string | null, nextAnchor?: string | null) => void
   canCollapse: boolean
 }) {
   const colors = getChunkColor(idx)
@@ -171,7 +171,7 @@ function ExpandedChunk({
             variant="ghost"
             size="sm"
             className="h-7 px-2 gap-1 text-xs"
-            onClick={() => onViewSource(chunk.doc_id, chunk.page_number, chunk.text)}
+            onClick={() => onViewSource(chunk.doc_id, chunk.page_number, chunk.text, chunk.start_char_idx, chunk.end_char_idx, chunk.html_start_idx, chunk.html_end_idx, chunk.prev_anchor, chunk.next_anchor)}
           >
             <Eye className="w-3 h-3" />
             View
@@ -296,8 +296,25 @@ export function QueryDetail({ data }: QueryDetailProps) {
     navigate(`${basePath}/queries`)
   }
 
-  const handleViewSource = (docId: string, pageNumber?: number | null, chunkText?: string) => {
-    openSourceSidebar(docId, pageNumber ?? 1, chunkText ?? undefined)
+  const handleViewSource = (
+    docId: string,
+    pageNumber?: number | null,
+    chunkText?: string,
+    startCharIdx?: number | null,
+    endCharIdx?: number | null,
+    htmlStartIdx?: number | null,
+    htmlEndIdx?: number | null,
+    prevAnchor?: string | null,
+    nextAnchor?: string | null
+  ) => {
+    openSourceSidebar(
+      docId,
+      pageNumber ?? 1,
+      chunkText ?? undefined,
+      startCharIdx != null && endCharIdx != null ? { start: startCharIdx, end: endCharIdx } : null,
+      htmlStartIdx != null && htmlEndIdx != null ? { htmlStart: htmlStartIdx, htmlEnd: htmlEndIdx } : null,
+      prevAnchor || nextAnchor ? { prevAnchor: prevAnchor ?? null, nextAnchor: nextAnchor ?? null } : null
+    )
   }
 
   const copyToClipboard = async (text: string, id: string) => {

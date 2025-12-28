@@ -304,36 +304,108 @@ def _create_callback_handler(store: TraceStore, skip_llm_logging: bool = False):
 
 class DocumentLoaderPatcher:
     """Helper class for patching document loaders."""
-    
+
+    # Class variable to store HTML page positions for later use in chunk page detection
+    _html_page_positions: Dict[str, Dict] = {}
+    # Store raw HTML content for position mapping during chunk creation
+    _raw_html_content: Dict[str, str] = {}
+    # Store loader text for position mapping
+    _loader_text: Dict[str, str] = {}
+
     def __init__(self, store: TraceStore, register_framework, original_handlers: Dict):
         self.store = store
         self.register_framework = register_framework
         self.original_handlers = original_handlers
         self.logged_sources = set()
         self._loading_lock = threading.local()
-    
+
     def log_documents(self, result, loader_name="unknown"):
         """Log documents from loader results."""
         if not result:
             return
         self.register_framework()
-        
+
         docs_by_source = {}
         for doc in result:
             source = doc.metadata.get('source', 'unknown')
             if source not in docs_by_source:
                 docs_by_source[source] = []
             docs_by_source[source].append(doc)
-        
+
         for source, docs in docs_by_source.items():
             if source in self.logged_sources:
                 continue
             self.logged_sources.add(source)
-            
+
             abs_path = os.path.abspath(source) if source != 'unknown' else source
             filename = os.path.basename(source) if source != 'unknown' else 'unknown'
+
+            # Check if this is an HTML file
+            file_ext = abs_path.lower().split('.')[-1] if abs_path != 'unknown' else ''
+            if file_ext in ('htm', 'html', 'xhtml'):
+                # For HTML: Use loader's text directly (so chunk indices match for highlighting)
+                # But also parse HTML to get page positions for page number detection
+                try:
+                    from sourcemapr.utils.html_parser import HTMLParser
+
+                    # Get the loader's extracted text (what text splitter will see)
+                    loader_text = "\n\n".join([d.page_content for d in docs])
+
+                    # Parse raw HTML to get page positions for chunk page detection
+                    with open(abs_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        html_content = f.read()
+
+                    # Store raw HTML for position mapping during chunk creation
+                    DocumentLoaderPatcher._raw_html_content[filename] = html_content
+                    DocumentLoaderPatcher._loader_text[filename] = loader_text
+
+                    parser = HTMLParser(html_content, filename)
+                    page_count = parser.page_count
+
+                    # Build page positions mapping for the LOADER's text
+                    # We need to map page breaks from HTML to positions in loader_text
+                    # Since this is complex, we'll use a simplified approach:
+                    # Store the ratio-based page positions
+                    html_text_len = len(parser.extracted_text)
+                    loader_text_len = len(loader_text)
+
+                    # Scale page positions from HTML parser to loader text positions
+                    if html_text_len > 0:
+                        scale = loader_text_len / html_text_len
+                        scaled_positions = {}
+                        for page_num, (start, end) in parser.page_positions.items():
+                            scaled_start = int(start * scale)
+                            scaled_end = int(end * scale)
+                            scaled_positions[page_num] = (scaled_start, scaled_end)
+                        DocumentLoaderPatcher._html_page_positions[filename] = scaled_positions
+                    else:
+                        DocumentLoaderPatcher._html_page_positions[filename] = {1: (0, loader_text_len)}
+
+                    self.store.log_document(
+                        doc_id=filename,
+                        filename=filename,
+                        file_path=abs_path,
+                        text_length=len(loader_text),
+                        num_pages=page_count
+                    )
+
+                    # Store the LOADER's text so chunk indices match for highlighting!
+                    self.store.log_parsed(
+                        doc_id=filename,
+                        filename=filename,
+                        text=loader_text
+                    )
+
+                    print(f"[SourcemapR] Document loaded (HTML): {filename} ({page_count} pages, {len(loader_text):,} chars)")
+                    continue
+
+                except Exception as e:
+                    print(f"[SourcemapR] HTML parsing fallback: {e}")
+                    # Fall through to default handling
+
+            # Default handling for non-HTML files (PDF, etc.)
             full_text = "\n\n--- PAGE BREAK ---\n\n".join([d.page_content for d in docs])
-            
+
             self.store.log_document(
                 doc_id=filename,
                 filename=filename,
@@ -341,7 +413,7 @@ class DocumentLoaderPatcher:
                 text_length=len(full_text),
                 num_pages=len(docs)
             )
-            
+
             self.store.log_parsed(
                 doc_id=filename,
                 filename=filename,
@@ -1033,40 +1105,73 @@ class LangChainProvider(BaseProvider):
         """Patch text splitters to track chunking."""
         try:
             from langchain_text_splitters.base import TextSplitter
-            
+
             if hasattr(TextSplitter.split_documents, '_sourcemapr_patched'):
                 return
-            
+
             original = TextSplitter.split_documents
-            
+
+            def _get_page_for_position(position, page_positions):
+                """Get page number for a text position."""
+                if not page_positions:
+                    return 1
+                for page_num, (start, end) in sorted(page_positions.items()):
+                    if start <= position < end:
+                        return page_num
+                return max(page_positions.keys()) if page_positions else 1
+
             def patched_split(self_splitter, documents, *args, **kwargs):
                 result = original(self_splitter, documents, *args, **kwargs)
                 splitter_name = self_splitter.__class__.__name__
-                
+
+                # Get HTML page positions from document loader
+                html_page_positions = DocumentLoaderPatcher._html_page_positions
+
+                # First pass: collect all chunk data in order
+                all_chunk_data = []
                 chunks_by_source = {}
+
                 for i, doc in enumerate(result):
                     metadata = doc.metadata or {}
                     source = metadata.get('source', '')
                     abs_path = os.path.abspath(source) if source else ''
                     filename = os.path.basename(source) if source else ''
-                    
+                    file_ext = abs_path.lower().split('.')[-1] if abs_path else ''
+
                     # Extract character indices
                     start_char_idx = metadata.get('start_index')
                     end_char_idx = None
                     if start_char_idx is not None:
                         end_char_idx = start_char_idx + len(doc.page_content)
-                    
+
+                    # HTML indices will be calculated in second pass with surrounding context
+
                     # Determine page number
                     page_from_meta = metadata.get('page')
                     if page_from_meta is not None:
                         page_number = page_from_meta + 1 if isinstance(page_from_meta, int) else page_from_meta
+                    elif file_ext in ('htm', 'html', 'xhtml') and filename in html_page_positions and start_char_idx is not None:
+                        # Use HTML page positions for page detection
+                        page_number = _get_page_for_position(start_char_idx, html_page_positions[filename])
                     else:
                         page_number = 1
-                    
+
                     chunk_metadata = dict(metadata)
                     chunk_metadata['file_path'] = abs_path
-                    
-                    # Collect chunks by source
+
+                    # Store chunk data for second pass
+                    all_chunk_data.append({
+                        'index': i,
+                        'doc_id': filename,
+                        'file_ext': file_ext,
+                        'text': doc.page_content,
+                        'page_number': page_number,
+                        'start_char_idx': start_char_idx,
+                        'end_char_idx': end_char_idx,
+                        'metadata': chunk_metadata,
+                    })
+
+                    # Collect chunks by source for stats
                     if filename:
                         if filename not in chunks_by_source:
                             chunks_by_source[filename] = {
@@ -1079,51 +1184,105 @@ class LangChainProvider(BaseProvider):
                             'page_number': page_number,
                             'start_char_idx': start_char_idx
                         })
-                    
+
+                # Helper to detect XBRL/metadata chunks that won't be visible in rendered HTML
+                def is_visible_chunk(text):
+                    """Check if chunk text is visible content (not XBRL/metadata)."""
+                    if not text or len(text) < 20:
+                        return False
+                    # XBRL patterns: URLs, namespace prefixes, Member suffixes
+                    xbrl_indicators = ['http://', 'https://', 'us-gaap:', 'tsla:', 'srt:', 'Member', 'xbrli:', 'xbrldi:']
+                    text_lower = text.lower()
+                    xbrl_count = sum(1 for ind in xbrl_indicators if ind.lower() in text_lower)
+                    # If more than 2 XBRL indicators, likely metadata
+                    if xbrl_count > 2:
+                        return False
+                    # Check if mostly alphanumeric soup (namespace URIs)
+                    words = text.split()
+                    if words and len(words[0]) > 50:  # Very long first "word" is likely a URI
+                        return False
+                    return True
+
+                def find_visible_chunk(chunks, start_idx, direction):
+                    """Find nearest visible chunk in given direction (-1 for prev, +1 for next)."""
+                    idx = start_idx + direction
+                    search_limit = 10  # Don't search too far
+                    count = 0
+                    while 0 <= idx < len(chunks) and count < search_limit:
+                        if is_visible_chunk(chunks[idx]['text']):
+                            return chunks[idx]['text']
+                        idx += direction
+                        count += 1
+                    return None
+
+                # Second pass: calculate HTML positions with context, add anchors, and log chunks
+                ANCHOR_LEN = 50
+                for i, chunk_data in enumerate(all_chunk_data):
+                    filename = chunk_data['doc_id']
+                    file_ext = chunk_data.get('file_ext', '')
+
+                    # Get surrounding VISIBLE chunk text for anchors (skip XBRL metadata)
+                    prev_text = find_visible_chunk(all_chunk_data, i, -1)
+                    next_text = find_visible_chunk(all_chunk_data, i, +1)
+
+                    # Get anchor from previous visible chunk (last N chars)
+                    prev_anchor = prev_text[-ANCHOR_LEN:] if prev_text and len(prev_text) > ANCHOR_LEN else prev_text
+
+                    # Get anchor from next visible chunk (first N chars)
+                    next_anchor = next_text[:ANCHOR_LEN] if next_text and len(next_text) > ANCHOR_LEN else next_text
+
+                    # Calculate HTML positions using surrounding chunks for triangulation
+                    html_start_idx = None
+                    html_end_idx = None
+                    if file_ext in ('htm', 'html', 'xhtml') and filename in DocumentLoaderPatcher._raw_html_content:
+                        try:
+                            from sourcemapr.utils.html_text_extractor import get_html_positions_for_chunk
+                            raw_html = DocumentLoaderPatcher._raw_html_content[filename]
+                            loader_text = DocumentLoaderPatcher._loader_text.get(filename, '')
+
+                            if chunk_data['start_char_idx'] is not None and loader_text:
+                                html_start_idx, html_end_idx = get_html_positions_for_chunk(
+                                    raw_html,
+                                    loader_text,
+                                    chunk_data['start_char_idx'],
+                                    chunk_data['end_char_idx'] or chunk_data['start_char_idx'] + len(chunk_data['text']),
+                                    chunk_text=chunk_data['text'],
+                                    prev_chunk_text=prev_text,
+                                    next_chunk_text=next_text
+                                )
+                        except Exception as e:
+                            pass  # Silently continue if position mapping fails
+
                     self.store.log_chunk(
-                        chunk_id=f"{filename}_{i}",
-                        doc_id=filename,
-                        index=i,
-                        text=doc.page_content,
-                        page_number=page_number,
-                        start_char_idx=start_char_idx,
-                        end_char_idx=end_char_idx,
-                        metadata=chunk_metadata
+                        chunk_id=f"{chunk_data['doc_id']}_{chunk_data['index']}",
+                        doc_id=chunk_data['doc_id'],
+                        index=chunk_data['index'],
+                        text=chunk_data['text'],
+                        page_number=chunk_data['page_number'],
+                        start_char_idx=chunk_data['start_char_idx'],
+                        end_char_idx=chunk_data['end_char_idx'],
+                        html_start_idx=html_start_idx,
+                        html_end_idx=html_end_idx,
+                        prev_anchor=prev_anchor,
+                        next_anchor=next_anchor,
+                        metadata=chunk_data['metadata']
                     )
-                
-                # Build parsed text for HTML files
+
+                # Build parsed text for HTML files (already handled by document loader, but update if chunks have new page info)
                 for filename, data in chunks_by_source.items():
                     file_path = data['file_path']
                     file_ext = file_path.lower().split('.')[-1] if file_path else ''
-                    
+
                     if file_ext in ('htm', 'html', 'xhtml') and data['chunks']:
                         sorted_chunks = sorted(data['chunks'], key=lambda x: x.get('start_char_idx') or x['index'])
-                        
-                        pages_content = {}
-                        for chunk in sorted_chunks:
-                            page_num = chunk.get('page_number') or 1
-                            if page_num not in pages_content:
-                                pages_content[page_num] = []
-                            pages_content[page_num].append(chunk['text'])
-                        
-                        if len(pages_content) > 1:
-                            parsed_parts = []
-                            for page_num in sorted(pages_content.keys()):
-                                parsed_parts.append('\n\n'.join(pages_content[page_num]))
-                            parsed_text = '\n\n--- PAGE BREAK ---\n\n'.join(parsed_parts)
-                        else:
-                            parsed_text = '\n\n'.join([c['text'] for c in sorted_chunks])
-                        
-                        self.store.log_parsed(
-                            doc_id=filename,
-                            filename=filename,
-                            text=parsed_text
-                        )
-                        print(f"[SourcemapR] Built parsed text for HTML: {filename} ({len(data['chunks'])} chunks)")
-                
+
+                        # Count pages for logging
+                        pages_found = set(c.get('page_number', 1) for c in sorted_chunks)
+                        print(f"[SourcemapR] HTML chunks: {filename} ({len(data['chunks'])} chunks across {len(pages_found)} pages)")
+
                 print(f"[SourcemapR] {splitter_name}: {len(result)} chunks created")
                 return result
-            
+
             patched_split._sourcemapr_patched = True
             TextSplitter.split_documents = patched_split
             self._original_handlers['langchain_text_splitters.base.TextSplitter.split_documents'] = original

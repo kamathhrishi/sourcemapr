@@ -13,11 +13,20 @@ import {
   ChevronsRight,
   ZoomIn,
   ZoomOut,
-  Code,
   Highlighter,
   Search,
   Eye,
+  List,
 } from 'lucide-react'
+
+// Section header extracted from HTML for navigation
+interface SectionHeader {
+  id: string
+  text: string
+  level: number // 1-6 for h1-h6
+  element?: Element
+  isNearChunk?: boolean // true if this header is near the highlighted chunk
+}
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -31,11 +40,12 @@ import type { DashboardData } from '@/api/types'
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
+
 interface DocumentViewerProps {
   data: DashboardData
 }
 
-type ViewMode = 'split' | 'pdf' | 'parsed'
+type ViewMode = 'split' | 'pdf' | 'parsed' | 'rendered'
 
 export function DocumentViewer({ data }: DocumentViewerProps) {
   const { docId } = useParams<{ docId: string }>()
@@ -49,16 +59,24 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     selectedChunkId,
     selectChunk,
     highlightChunkText,
+    highlightChunkIdx,
+    highlightHtmlIdx,
+    highlightAnchors,
     setHighlight,
     clearHighlight,
   } = useAppStore()
 
+  // Default to 'rendered' for HTML, 'split' for PDF, 'parsed' for others
   const [viewMode, setViewMode] = useState<ViewMode>('split')
   const [chunkSearch, setChunkSearch] = useState('')
   const [chunksExpanded, setChunksExpanded] = useState(true)
   const [numPages, setNumPages] = useState<number>(0)
   const [pdfLoading, setPdfLoading] = useState(true)
   const [pdfError, setPdfError] = useState<string | null>(null)
+  const [sectionHeaders, setSectionHeaders] = useState<SectionHeader[]>([])
+  const [showSectionNav, setShowSectionNav] = useState(true)
+  const [sectionPage, setSectionPage] = useState(0)
+  const SECTIONS_PER_PAGE = 10
   const parsedContainerRef = useRef<HTMLPreElement>(null)
   const pdfContainerRef = useRef<HTMLDivElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -73,6 +91,17 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
   const isPdf = fileExt === 'pdf'
   const isHtml = ['htm', 'html', 'xhtml'].includes(fileExt)
   const fileUrl = document ? api.getFileUrl(document.file_path) : null
+
+  // Set default view mode based on file type
+  useEffect(() => {
+    if (isHtml) {
+      setViewMode('rendered')
+    } else if (isPdf) {
+      setViewMode('split')
+    } else {
+      setViewMode('parsed')
+    }
+  }, [isHtml, isPdf])
 
   // Get chunks for this document - sorted by position in document
   const allChunks = useMemo(() => {
@@ -122,9 +151,24 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
   }
 
   // Handle chunk click
-  const handleChunkClick = (chunkId: string, text: string, startIdx?: number | null, endIdx?: number | null, pageNum?: number | null) => {
+  const handleChunkClick = (
+    chunkId: string,
+    text: string,
+    startIdx?: number | null,
+    endIdx?: number | null,
+    pageNum?: number | null,
+    htmlStartIdx?: number | null,
+    htmlEndIdx?: number | null,
+    prevAnchor?: string | null,
+    nextAnchor?: string | null
+  ) => {
     selectChunk(chunkId)
-    setHighlight(text, startIdx != null && endIdx != null ? { start: startIdx, end: endIdx } : null)
+    setHighlight(
+      text,
+      startIdx != null && endIdx != null ? { start: startIdx, end: endIdx } : null,
+      htmlStartIdx != null && htmlEndIdx != null ? { htmlStart: htmlStartIdx, htmlEnd: htmlEndIdx } : null,
+      prevAnchor || nextAnchor ? { prevAnchor: prevAnchor ?? null, nextAnchor: nextAnchor ?? null } : null
+    )
     if (pageNum) {
       setCurrentPage(pageNum)
     }
@@ -192,15 +236,30 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     return null
   }, [])
 
-  // Highlight text in parsed content with fallback to fuzzy matching
-  const highlightTextInContent = useCallback((text: string) => {
+  // Highlight text in parsed content - prefer position indices, fallback to text matching
+  const highlightTextInContent = useCallback((text: string, pageStartOffset: number = 0) => {
     if (!highlightChunkText) return text
 
-    // First try: exact match with flexible whitespace
+    // BEST: Use position indices if available (most accurate)
+    if (highlightChunkIdx && highlightChunkIdx.start != null && highlightChunkIdx.end != null) {
+      // Adjust indices relative to current page offset
+      const relStart = highlightChunkIdx.start - pageStartOffset
+      const relEnd = highlightChunkIdx.end - pageStartOffset
+
+      // Check if the chunk is within this text segment
+      if (relStart >= 0 && relStart < text.length && relEnd > 0 && relEnd <= text.length) {
+        const before = text.slice(0, relStart)
+        const match = text.slice(relStart, relEnd)
+        const after = text.slice(relEnd)
+        return `${before}<mark class="chunk-highlight">${match}</mark>${after}`
+      }
+    }
+
+    // FALLBACK 1: exact match with flexible whitespace (any whitespace matches any whitespace)
     const escaped = highlightChunkText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const normalizedSearch = escaped.replace(/\s+/g, '\\s+')
+    const normalizedSearch = escaped.replace(/\s+/g, '[\\s\\n\\r\\t]+')
     try {
-      const regex = new RegExp(`(${normalizedSearch})`, 'gi')
+      const regex = new RegExp(`(${normalizedSearch})`, 'gis')
       const exactMatch = text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
       if (exactMatch !== text) {
         return exactMatch // Found exact match
@@ -209,11 +268,11 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
       // Continue to fallback
     }
 
-    // Second try: match the first 100 characters (chunk might be truncated)
+    // FALLBACK 2: match the first 100 characters with flexible whitespace
     if (highlightChunkText.length > 100) {
-      const shortChunk = highlightChunkText.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+      const shortChunk = highlightChunkText.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '[\\s\\n\\r\\t]+')
       try {
-        const regex = new RegExp(`(${shortChunk})`, 'gi')
+        const regex = new RegExp(`(${shortChunk})`, 'gis')
         const shortMatch = text.replace(regex, '<mark class="chunk-highlight">$1</mark>')
         if (shortMatch !== text) {
           return shortMatch
@@ -223,9 +282,49 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
       }
     }
 
-    // Fallback: find region with most matching words and highlight it
-    const chunkWords = getSignificantWords(highlightChunkText)
-    const bestRegion = findBestMatchingRegion(text, chunkWords)
+    // FALLBACK 3: Aggressive word-by-word highlighting
+    // Extract ALL words from chunk and highlight every match
+    const chunkWords = highlightChunkText.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 3)
+
+    // Remove common stop words for cleaner highlighting
+    const stopWords = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'has', 'her', 'was', 'one', 'our', 'out', 'with', 'this', 'that', 'from', 'have', 'been', 'will', 'would', 'could', 'should', 'into', 'more', 'some', 'such', 'than', 'them', 'then', 'these', 'they', 'were', 'what', 'when', 'where', 'which', 'while', 'your'])
+    const meaningfulWords = chunkWords.filter(w => !stopWords.has(w) && w.length >= 3)
+
+    if (meaningfulWords.length > 0) {
+      let result = text
+      let hasMatch = false
+
+      // Sort by length (longer words first) to prioritize more specific matches
+      const sortedWords = [...new Set(meaningfulWords)].sort((a, b) => b.length - a.length)
+
+      for (const word of sortedWords.slice(0, 25)) {
+        try {
+          const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          // Match word with flexible boundaries (allow partial matches for longer words)
+          const wordRegex = word.length >= 5
+            ? new RegExp(`(${escaped})`, 'gi')
+            : new RegExp(`\\b(${escaped})\\b`, 'gi')
+          const newResult = result.replace(wordRegex, '<mark class="chunk-highlight-word">$1</mark>')
+          if (newResult !== result) {
+            result = newResult
+            hasMatch = true
+          }
+        } catch {
+          // Skip invalid patterns
+        }
+      }
+
+      if (hasMatch) {
+        return result
+      }
+    }
+
+    // FALLBACK 4: find region with most matching words
+    const chunkWordSet = getSignificantWords(highlightChunkText)
+    const bestRegion = findBestMatchingRegion(text, chunkWordSet)
 
     if (bestRegion) {
       const before = text.slice(0, bestRegion.start)
@@ -234,8 +333,25 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
       return `${before}<mark class="chunk-highlight-word">${match}</mark>${after}`
     }
 
+    // FALLBACK 5: Ultimate - highlight ANY word 3+ chars that appears in both
+    if (chunkWords.length > 0) {
+      let result = text
+      for (const word of chunkWords.slice(0, 30)) {
+        try {
+          const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          const wordRegex = new RegExp(`(${escaped})`, 'gi')
+          result = result.replace(wordRegex, '<mark class="chunk-highlight-word">$1</mark>')
+        } catch {
+          // Skip
+        }
+      }
+      if (result !== text) {
+        return result
+      }
+    }
+
     return text
-  }, [highlightChunkText, getSignificantWords, findBestMatchingRegion])
+  }, [highlightChunkText, highlightChunkIdx, getSignificantWords, findBestMatchingRegion])
 
   // PDF document loaded
   const onDocumentLoadSuccess = ({ numPages: pages }: { numPages: number }) => {
@@ -360,9 +476,9 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
     }
   }, [highlightChunkText, currentPage, viewMode])
 
-  // Highlight in HTML iframe
+  // Highlight in HTML iframe using HTML indices when available
   useEffect(() => {
-    if (highlightChunkText && isHtml && iframeRef.current && (viewMode === 'split' || viewMode === 'pdf')) {
+    if (highlightChunkText && isHtml && iframeRef.current && (viewMode === 'split' || viewMode === 'pdf' || viewMode === 'rendered')) {
       const timer = setTimeout(() => {
         try {
           const iframe = iframeRef.current
@@ -379,6 +495,12 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
               parent.normalize()
             }
           })
+          // Also remove parent highlights
+          const oldParentHighlights = iframeDoc.querySelectorAll('.sourcemapr-highlight-parent')
+          oldParentHighlights.forEach((el) => {
+            (el as HTMLElement).style.backgroundColor = ''
+            el.classList.remove('sourcemapr-highlight-parent')
+          })
 
           // Add highlight styles
           let style = iframeDoc.getElementById('sourcemapr-highlight-style')
@@ -389,46 +511,191 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
             iframeDoc.head.appendChild(style)
           }
 
-          // Normalize search text
-          const searchText = highlightChunkText.replace(/\s+/g, ' ').trim()
-          const searchLower = searchText.toLowerCase()
-
-          // Collect all text content with node references
-          const textNodes: { node: Text; text: string }[] = []
-          let fullText = ''
+          // Collect all text nodes with their index for searching
+          const textNodes: { node: Text; text: string; idx: number }[] = []
           const walker = iframeDoc.createTreeWalker(iframeDoc.body, NodeFilter.SHOW_TEXT, null)
           let node
+          let nodeIdx = 0
           while ((node = walker.nextNode())) {
             const text = node.textContent ?? ''
-            textNodes.push({ node: node as Text, text })
-            fullText += text
+            if (text.trim()) {
+              textNodes.push({ node: node as Text, text, idx: nodeIdx })
+              nodeIdx++
+            }
           }
 
-          // Find match in combined text
-          const fullTextNormalized = fullText.replace(/\s+/g, ' ').toLowerCase()
-          const matchStart = fullTextNormalized.indexOf(searchLower.slice(0, 100))
+          // For rendered HTML in iframe, use text-based matching with context validation
+          const searchText = highlightChunkText.replace(/\s+/g, ' ').trim()
+          if (!searchText) return
 
-          if (matchStart === -1) return
+          // Build full concatenated text from ALL nodes
+          let fullConcatenatedText = ''
+          const fullNodeOffsets: { node: Text; start: number; end: number; idx: number }[] = []
 
-          // Find which nodes contain the match and highlight them
+          for (let i = 0; i < textNodes.length; i++) {
+            const item = textNodes[i]
+            if (!item) continue
+            const start = fullConcatenatedText.length
+            fullConcatenatedText += item.text + ' '
+            fullNodeOffsets.push({ node: item.node, start, end: fullConcatenatedText.length - 1, idx: i })
+          }
+
+          const fullConcatenatedLower = fullConcatenatedText.toLowerCase()
+
+          // Helper: extract distinctive words (4+ chars, not common words)
+          const getDistinctiveWords = (text: string): string[] => {
+            const stopWords = new Set(['this', 'that', 'with', 'from', 'have', 'been', 'were', 'they', 'their', 'which', 'would', 'could', 'should', 'about', 'these', 'those', 'other', 'into', 'more', 'some', 'such', 'than', 'them', 'then', 'there', 'when', 'where', 'will', 'your'])
+            return text.toLowerCase()
+              .replace(/[^a-z0-9\s]/g, ' ')
+              .split(/\s+/)
+              .filter(w => w.length >= 4 && !stopWords.has(w))
+          }
+
+          // Helper: count how many words from a set appear in a text region
+          const countWordMatches = (words: string[], text: string): number => {
+            let count = 0
+            for (const word of words) {
+              if (text.includes(word)) count++
+            }
+            return count
+          }
+
+          // Get distinctive words from chunk and anchors
+          const chunkWords = getDistinctiveWords(searchText)
+          const prevAnchorWords = highlightAnchors?.prevAnchor ? getDistinctiveWords(highlightAnchors.prevAnchor) : []
+          const nextAnchorWords = highlightAnchors?.nextAnchor ? getDistinctiveWords(highlightAnchors.nextAnchor) : []
+
+          // Find ALL candidate positions where chunk words cluster
+          const candidatePositions: { pos: number; chunkScore: number; contextScore: number }[] = []
+          const windowSize = 1000
+
+          for (const word of chunkWords.slice(0, 5)) {
+            let searchPos = 0
+            while (searchPos < fullConcatenatedLower.length) {
+              const idx = fullConcatenatedLower.indexOf(word, searchPos)
+              if (idx === -1) break
+              const existingNearby = candidatePositions.find(c => Math.abs(c.pos - idx) < windowSize)
+              if (!existingNearby) {
+                candidatePositions.push({ pos: idx, chunkScore: 0, contextScore: 0 })
+              }
+              searchPos = idx + word.length
+            }
+          }
+
+          // Score each candidate by chunk word matches AND surrounding context matches
+          for (const candidate of candidatePositions) {
+            const regionStart = Math.max(0, candidate.pos - 200)
+            const regionEnd = Math.min(fullConcatenatedLower.length, candidate.pos + windowSize)
+            const region = fullConcatenatedLower.slice(regionStart, regionEnd)
+            candidate.chunkScore = countWordMatches(chunkWords, region)
+
+            const beforeRegion = fullConcatenatedLower.slice(Math.max(0, candidate.pos - 1500), candidate.pos)
+            const afterRegion = fullConcatenatedLower.slice(candidate.pos + 500, Math.min(fullConcatenatedLower.length, candidate.pos + 2000))
+            candidate.contextScore = countWordMatches(prevAnchorWords, beforeRegion) + countWordMatches(nextAnchorWords, afterRegion)
+          }
+
+          // Sort by context score first, then by chunk score
+          candidatePositions.sort((a, b) => {
+            if (b.contextScore !== a.contextScore) return b.contextScore - a.contextScore
+            return b.chunkScore - a.chunkScore
+          })
+
           let highlighted = false
-          for (const { node: textNode, text } of textNodes) {
-            const normalizedText = text.toLowerCase()
-            const localMatch = normalizedText.indexOf(searchLower.slice(0, Math.min(50, searchLower.length)))
-            if (localMatch !== -1 && !highlighted) {
-              const range = iframeDoc.createRange()
-              const matchEnd = Math.min(localMatch + searchText.length, text.length)
-              range.setStart(textNode, localMatch)
-              range.setEnd(textNode, matchEnd)
+          let bestMatchNodeIdx = -1
 
-              const highlight = iframeDoc.createElement('span')
-              highlight.className = 'sourcemapr-highlight'
-              try {
-                range.surroundContents(highlight)
-                highlight.scrollIntoView({ behavior: 'instant', block: 'center' })
-                highlighted = true
-              } catch {
+          if (candidatePositions.length > 0 && candidatePositions[0]) {
+            const bestCandidate = candidatePositions[0]
+            if (bestCandidate.chunkScore >= 2 || bestCandidate.contextScore >= 2) {
+              for (const offset of fullNodeOffsets) {
+                if (offset.start <= bestCandidate.pos && offset.end >= bestCandidate.pos) {
+                  bestMatchNodeIdx = offset.idx
+                  break
+                }
+              }
+            }
+          }
+
+          // Highlight ONLY the chunk (not anchors)
+          if (bestMatchNodeIdx >= 0) {
+            const matchOffset = fullNodeOffsets[bestMatchNodeIdx]
+            if (matchOffset) {
+              const searchStart = Math.max(0, matchOffset.start - 100)
+              const searchEnd = Math.min(fullConcatenatedLower.length, matchOffset.start + searchText.length + 500)
+              const searchRegion = fullConcatenatedLower.slice(searchStart, searchEnd)
+
+              const chunkLower = searchText.slice(0, 200).toLowerCase().replace(/\s+/g, ' ')
+              const exactIdx = searchRegion.indexOf(chunkLower.slice(0, 50))
+
+              if (exactIdx !== -1) {
+                const chunkStartInFull = searchStart + exactIdx
+                const chunkEndInFull = chunkStartInFull + Math.min(searchText.length, 500)
+
+                for (const offset of fullNodeOffsets) {
+                  if (offset.end >= chunkStartInFull && offset.start <= chunkEndInFull) {
+                    try {
+                      const parent = offset.node.parentElement
+                      if (parent) {
+                        parent.classList.add('sourcemapr-highlight-parent')
+                        parent.style.backgroundColor = '#fef08a'
+                      }
+                    } catch { /* ignore */ }
+                  }
+                }
+              } else {
+                const parent = matchOffset.node.parentElement
+                if (parent) {
+                  parent.classList.add('sourcemapr-highlight-parent')
+                  parent.style.backgroundColor = '#fef08a'
+                }
+              }
+            }
+
+            const scrollNode = textNodes[bestMatchNodeIdx]
+            if (scrollNode) {
+              scrollNode.node.parentElement?.scrollIntoView({ behavior: 'instant', block: 'center' })
+              highlighted = true
+            }
+          }
+
+          // Fallback: try single node exact match
+          if (!highlighted) {
+            const searchLower = searchText.slice(0, 100).toLowerCase()
+            for (const { node: textNode, text } of textNodes) {
+              if (highlighted) break
+              const normalizedText = text.replace(/\s+/g, ' ').toLowerCase()
+              const matchIdx = normalizedText.indexOf(searchLower.slice(0, 50))
+              if (matchIdx !== -1) {
+                try {
+                  const range = iframeDoc.createRange()
+                  const highlightLen = Math.min(searchText.length, text.length - matchIdx)
+                  range.setStart(textNode, matchIdx)
+                  range.setEnd(textNode, matchIdx + highlightLen)
+                  const highlight = iframeDoc.createElement('span')
+                  highlight.className = 'sourcemapr-highlight'
+                  range.surroundContents(highlight)
+                  highlight.scrollIntoView({ behavior: 'instant', block: 'center' })
+                  highlighted = true
+                } catch {
+                  textNode.parentElement?.scrollIntoView({ behavior: 'instant', block: 'center' })
+                  highlighted = true
+                }
+              }
+            }
+          }
+
+          // Final fallback: matching 2+ distinctive words
+          if (!highlighted) {
+            for (const { node: textNode, text } of textNodes) {
+              if (highlighted) break
+              const lowerText = text.toLowerCase()
+              const matchCount = chunkWords.filter(w => lowerText.includes(w)).length
+              if (matchCount >= 2) {
                 textNode.parentElement?.scrollIntoView({ behavior: 'instant', block: 'center' })
+                const parent = textNode.parentElement
+                if (parent) {
+                  parent.style.backgroundColor = '#fef08a'
+                  parent.classList.add('sourcemapr-highlight-parent')
+                }
                 highlighted = true
               }
             }
@@ -439,7 +706,102 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
       }, 500)
       return () => clearTimeout(timer)
     }
-  }, [highlightChunkText, isHtml, viewMode])
+  }, [highlightChunkText, highlightAnchors, isHtml, viewMode])
+
+  // Extract section headers from iframe for navigation
+  useEffect(() => {
+    if (!isHtml || !iframeRef.current || viewMode !== 'rendered') return
+
+    const extractHeaders = () => {
+      try {
+        const iframe = iframeRef.current
+        if (!iframe) return
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+        if (!iframeDoc || !iframeDoc.body) return
+
+        // Find all headers h1-h4
+        const headerElements = iframeDoc.querySelectorAll('h1, h2, h3, h4')
+        const headers: SectionHeader[] = []
+
+        headerElements.forEach((el, idx) => {
+          const text = el.textContent?.trim() || ''
+          if (text && text.length > 2 && text.length < 200) {
+            const level = parseInt(el.tagName[1] || '1', 10)
+            headers.push({
+              id: `section-${idx}`,
+              text: text.slice(0, 80) + (text.length > 80 ? '...' : ''),
+              level,
+              element: el,
+              isNearChunk: false,
+            })
+          }
+        })
+
+        // Mark headers near the highlighted chunk (within ~20% of total)
+        if (highlightHtmlIdx && headers.length > 0) {
+          const chunkPos = highlightHtmlIdx.htmlStart
+          // Find the header closest to the chunk
+          let closestIdx = 0
+          let closestDist = Infinity
+          headers.forEach((h, idx) => {
+            const headerPos = (h.element as HTMLElement)?.offsetTop || 0
+            const dist = Math.abs(headerPos - chunkPos)
+            if (dist < closestDist) {
+              closestDist = dist
+              closestIdx = idx
+            }
+          })
+
+          // Mark ~20% of headers as "near chunk" (the closest ones)
+          const nearCount = Math.max(1, Math.ceil(headers.length * 0.2))
+          const startIdx = Math.max(0, closestIdx - Math.floor(nearCount / 2))
+          const endIdx = Math.min(headers.length, startIdx + nearCount)
+          for (let i = startIdx; i < endIdx; i++) {
+            const h = headers[i]
+            if (h) {
+              h.isNearChunk = true
+            }
+          }
+        }
+
+        setSectionHeaders(headers)
+
+        // Auto-navigate to page with highlighted chunk
+        if (highlightHtmlIdx && headers.length > 0) {
+          const nearIdx = headers.findIndex(h => h.isNearChunk)
+          if (nearIdx >= 0) {
+            setSectionPage(Math.floor(nearIdx / SECTIONS_PER_PAGE))
+          }
+        }
+      } catch (e) {
+        console.log('Could not extract headers:', e)
+      }
+    }
+
+    // Wait for iframe to load
+    const timer = setTimeout(extractHeaders, 800)
+    return () => clearTimeout(timer)
+  }, [isHtml, viewMode, highlightHtmlIdx, SECTIONS_PER_PAGE])
+
+  // Scroll to a section in the iframe
+  const scrollToSection = useCallback((header: SectionHeader) => {
+    if (!iframeRef.current) return
+    try {
+      const iframe = iframeRef.current
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+      if (!iframeDoc) return
+
+      // Find the element again by index
+      const headerElements = iframeDoc.querySelectorAll('h1, h2, h3, h4')
+      const idx = parseInt(header.id.split('-')[1] || '0', 10)
+      const el = headerElements[idx]
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    } catch (e) {
+      console.log('Could not scroll to section:', e)
+    }
+  }, [])
 
   if (!document) {
     return (
@@ -507,41 +869,63 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
 
         {/* View Mode Buttons */}
         <div className="flex items-center gap-2">
-          {(isPdf || isHtml) && (
-            <Button
-              variant={viewMode === 'split' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('split')}
-            >
-              Split
-            </Button>
-          )}
+          {/* PDF view modes */}
           {isPdf && (
-            <Button
-              variant={viewMode === 'pdf' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('pdf')}
-            >
-              PDF
-            </Button>
+            <>
+              <Button
+                variant={viewMode === 'split' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('split')}
+              >
+                Split
+              </Button>
+              <Button
+                variant={viewMode === 'pdf' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('pdf')}
+              >
+                PDF
+              </Button>
+              <Button
+                variant={viewMode === 'parsed' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('parsed')}
+              >
+                Parsed
+              </Button>
+            </>
           )}
+          {/* HTML view modes: Original, Parsed */}
           {isHtml && (
+            <>
+              <Button
+                variant={viewMode === 'rendered' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('rendered')}
+              >
+                <Eye className="w-4 h-4 mr-1" />
+                Original
+              </Button>
+              <Button
+                variant={viewMode === 'parsed' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('parsed')}
+              >
+                <Layers className="w-4 h-4 mr-1" />
+                Parsed
+              </Button>
+            </>
+          )}
+          {/* Other file types: just Parsed view */}
+          {!isPdf && !isHtml && (
             <Button
-              variant={viewMode === 'pdf' ? 'default' : 'outline'}
+              variant={viewMode === 'parsed' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setViewMode('pdf')}
+              onClick={() => setViewMode('parsed')}
             >
-              <Code className="w-4 h-4 mr-1" />
-              HTML
+              Parsed
             </Button>
           )}
-          <Button
-            variant={viewMode === 'parsed' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setViewMode('parsed')}
-          >
-            Parsed
-          </Button>
 
           <div className="w-px h-6 bg-apple-border mx-2" />
 
@@ -683,8 +1067,8 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
                     </>
                   ) : isHtml ? (
                     <>
-                      <Code className="w-3 h-3" />
-                      Original HTML Document
+                      <Eye className="w-3 h-3" />
+                      Original HTML
                     </>
                   ) : null}
                   {highlightChunkText && (
@@ -732,6 +1116,103 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
                       No source document available
                     </div>
                   )}
+                </div>
+              </div>
+            ) : viewMode === 'rendered' ? (
+              // Original HTML view - shows how HTML is actually rendered in browser
+              <div className="flex-1 flex flex-col">
+                <div className="px-3 py-1.5 bg-apple-tertiary/50 border-b border-apple-border text-xs text-apple-secondary flex items-center gap-2 shrink-0">
+                  <Eye className="w-3 h-3" />
+                  Original HTML
+                  {highlightChunkText && (
+                    <Badge variant="warning" className="ml-2 gap-1 bg-amber-100 text-amber-700 border-0">
+                      <Highlighter className="w-3 h-3" />
+                      Chunk Highlighted
+                    </Badge>
+                  )}
+                  <div className="flex-1" />
+                  {sectionHeaders.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 gap-1"
+                      onClick={() => setShowSectionNav(!showSectionNav)}
+                    >
+                      <List className="w-3 h-3" />
+                      {showSectionNav ? 'Hide' : 'Show'} Sections ({sectionHeaders.length})
+                    </Button>
+                  )}
+                </div>
+                <div className="flex-1 flex overflow-hidden">
+                  {/* Section Navigation Sidebar */}
+                  {showSectionNav && sectionHeaders.length > 0 && (
+                    <div className="w-64 border-r border-apple-border bg-apple-tertiary/30 flex flex-col shrink-0">
+                      <div className="px-2 py-1.5 border-b border-apple-border text-xs font-medium text-apple-secondary flex items-center justify-between">
+                        <span>Sections</span>
+                        {sectionHeaders.length > SECTIONS_PER_PAGE && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0"
+                              disabled={sectionPage === 0}
+                              onClick={() => setSectionPage(Math.max(0, sectionPage - 1))}
+                            >
+                              <ChevronLeft className="w-3 h-3" />
+                            </Button>
+                            <span className="text-[10px] min-w-[40px] text-center">
+                              {sectionPage + 1}/{Math.ceil(sectionHeaders.length / SECTIONS_PER_PAGE)}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0"
+                              disabled={sectionPage >= Math.ceil(sectionHeaders.length / SECTIONS_PER_PAGE) - 1}
+                              onClick={() => setSectionPage(Math.min(Math.ceil(sectionHeaders.length / SECTIONS_PER_PAGE) - 1, sectionPage + 1))}
+                            >
+                              <ChevronRight className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <ScrollArea className="flex-1">
+                        <div className="p-1 space-y-0.5">
+                          {sectionHeaders
+                            .slice(sectionPage * SECTIONS_PER_PAGE, (sectionPage + 1) * SECTIONS_PER_PAGE)
+                            .map((header) => (
+                            <button
+                              key={header.id}
+                              onClick={() => scrollToSection(header)}
+                              className={`w-full text-left px-2 py-1 rounded text-xs transition-colors hover:bg-apple-tertiary ${
+                                header.isNearChunk
+                                  ? 'bg-amber-100 text-amber-800 font-medium border-l-2 border-amber-500'
+                                  : 'text-apple-secondary'
+                              }`}
+                              style={{ paddingLeft: `${(header.level - 1) * 8 + 8}px` }}
+                            >
+                              <span className="line-clamp-2">{header.text}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  )}
+                  {/* Main Content */}
+                  <div className="flex-1 overflow-auto bg-white">
+                    {fileUrl ? (
+                      <iframe
+                        ref={iframeRef}
+                        src={fileUrl}
+                        className="w-full h-full border-0 bg-white"
+                        title={document.filename}
+                        sandbox="allow-same-origin"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-apple-secondary">
+                        No HTML document available
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -812,7 +1293,11 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
                         chunk.text,
                         chunk.start_char_idx,
                         chunk.end_char_idx,
-                        chunk.page_number
+                        chunk.page_number,
+                        chunk.html_start_idx,
+                        chunk.html_end_idx,
+                        chunk.prev_anchor,
+                        chunk.next_anchor
                       )}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -836,7 +1321,11 @@ export function DocumentViewer({ data }: DocumentViewerProps) {
                                 chunk.text,
                                 chunk.start_char_idx,
                                 chunk.end_char_idx,
-                                chunk.page_number
+                                chunk.page_number,
+                                chunk.html_start_idx,
+                                chunk.html_end_idx,
+                                chunk.prev_anchor,
+                                chunk.next_anchor
                               )
                             }}
                           >

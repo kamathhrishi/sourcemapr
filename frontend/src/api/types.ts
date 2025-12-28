@@ -35,6 +35,10 @@ export interface Chunk {
   page_number: number | null
   start_char_idx: number | null
   end_char_idx: number | null
+  html_start_idx: number | null
+  html_end_idx: number | null
+  prev_anchor: string | null
+  next_anchor: string | null
   experiment_id: number | null
   metadata?: Record<string, unknown>
 }
@@ -47,6 +51,10 @@ export interface RetrievalResult {
   page_number: number | null
   start_char_idx?: number | null
   end_char_idx?: number | null
+  html_start_idx?: number | null
+  html_end_idx?: number | null
+  prev_anchor?: string | null
+  next_anchor?: string | null
   metadata?: Record<string, unknown>
 }
 

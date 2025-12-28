@@ -132,6 +132,26 @@ def init_db():
         except:
             pass  # Column already exists
 
+        # Add raw HTML indices for accurate Original view highlighting (migration)
+        try:
+            cursor.execute("ALTER TABLE chunks ADD COLUMN html_start_idx INTEGER")
+        except:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE chunks ADD COLUMN html_end_idx INTEGER")
+        except:
+            pass  # Column already exists
+
+        # Add anchor text for surrounding chunk context (helps locate chunks in rendered HTML)
+        try:
+            cursor.execute("ALTER TABLE chunks ADD COLUMN prev_anchor TEXT")
+        except:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE chunks ADD COLUMN next_anchor TEXT")
+        except:
+            pass  # Column already exists
+
         # Embeddings table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS embeddings (
@@ -634,8 +654,8 @@ def store_chunk(data: Dict) -> None:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT OR REPLACE INTO chunks
-            (chunk_id, doc_id, experiment_id, index_num, text, text_length, page_number, start_char_idx, end_char_idx, metadata, trace_id, data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (chunk_id, doc_id, experiment_id, index_num, text, text_length, page_number, start_char_idx, end_char_idx, html_start_idx, html_end_idx, prev_anchor, next_anchor, metadata, trace_id, data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             chunk_data.get('chunk_id'),
             chunk_data.get('doc_id'),
@@ -646,6 +666,10 @@ def store_chunk(data: Dict) -> None:
             chunk_data.get('page_number'),
             chunk_data.get('start_char_idx'),
             chunk_data.get('end_char_idx'),
+            chunk_data.get('html_start_idx'),
+            chunk_data.get('html_end_idx'),
+            chunk_data.get('prev_anchor'),
+            chunk_data.get('next_anchor'),
             json.dumps(chunk_data.get('metadata', {})),
             chunk_data.get('trace_id'),
             json.dumps(chunk_data)
@@ -856,6 +880,22 @@ def get_chunks(doc_id: str = None, experiment_id: int = None, include_text: bool
                 data['start_char_idx'] = row['start_char_idx']
             if row['end_char_idx'] is not None:
                 data['end_char_idx'] = row['end_char_idx']
+            # Include raw HTML indices for Original view highlighting
+            try:
+                if row['html_start_idx'] is not None:
+                    data['html_start_idx'] = row['html_start_idx']
+                if row['html_end_idx'] is not None:
+                    data['html_end_idx'] = row['html_end_idx']
+            except (KeyError, IndexError):
+                pass  # Column doesn't exist yet
+            # Include anchor text for surrounding chunk context
+            try:
+                if row['prev_anchor'] is not None:
+                    data['prev_anchor'] = row['prev_anchor']
+                if row['next_anchor'] is not None:
+                    data['next_anchor'] = row['next_anchor']
+            except (KeyError, IndexError):
+                pass  # Column doesn't exist yet
             if row['page_number'] is not None:
                 data['page_number'] = row['page_number']
             if row['index_num'] is not None:
@@ -950,11 +990,39 @@ def get_retrievals(experiment_id: int = None, limit: int = 100) -> List[Dict]:
                 data['trace_id'] = row['trace_id']
             if 'retrieval_id' not in data and row['retrieval_id']:
                 data['retrieval_id'] = row['retrieval_id']
-            
+
             # Include created_at as timestamp if not already present
             if 'timestamp' not in data and row['created_at']:
                 data['timestamp'] = row['created_at']
-            
+
+            # Enrich results with chunk data (anchors, html indices, page numbers)
+            if data.get('results'):
+                chunk_ids = [r.get('chunk_id') for r in data['results'] if r.get('chunk_id')]
+                if chunk_ids:
+                    # Batch lookup chunks
+                    placeholders = ','.join('?' * len(chunk_ids))
+                    cursor.execute(
+                        f"SELECT chunk_id, prev_anchor, next_anchor, html_start_idx, html_end_idx, page_number FROM chunks WHERE chunk_id IN ({placeholders})",
+                        chunk_ids
+                    )
+                    chunk_data = {r['chunk_id']: dict(r) for r in cursor.fetchall()}
+
+                    # Merge chunk data into results
+                    for res in data['results']:
+                        cid = res.get('chunk_id')
+                        if cid and cid in chunk_data:
+                            cd = chunk_data[cid]
+                            if cd.get('prev_anchor'):
+                                res['prev_anchor'] = cd['prev_anchor']
+                            if cd.get('next_anchor'):
+                                res['next_anchor'] = cd['next_anchor']
+                            if cd.get('html_start_idx') is not None:
+                                res['html_start_idx'] = cd['html_start_idx']
+                            if cd.get('html_end_idx') is not None:
+                                res['html_end_idx'] = cd['html_end_idx']
+                            if cd.get('page_number') is not None and res.get('page_number') is None:
+                                res['page_number'] = cd['page_number']
+
             result.append(data)
         return result
 
@@ -1191,8 +1259,8 @@ def store_chunks_batch(chunks: list) -> None:
             # Bulk insert all chunks for this experiment
             cursor.executemany("""
                 INSERT OR REPLACE INTO chunks
-                (chunk_id, doc_id, experiment_id, index_num, text, text_length, page_number, start_char_idx, end_char_idx, metadata, trace_id, data)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (chunk_id, doc_id, experiment_id, index_num, text, text_length, page_number, start_char_idx, end_char_idx, html_start_idx, html_end_idx, prev_anchor, next_anchor, metadata, trace_id, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
                 (
                     c.get('chunk_id'),
@@ -1204,6 +1272,10 @@ def store_chunks_batch(chunks: list) -> None:
                     c.get('page_number'),
                     c.get('start_char_idx'),
                     c.get('end_char_idx'),
+                    c.get('html_start_idx'),
+                    c.get('html_end_idx'),
+                    c.get('prev_anchor'),
+                    c.get('next_anchor'),
                     json.dumps(c.get('metadata', {})),
                     c.get('trace_id'),
                     json.dumps(c)
