@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 
 type ViewMode = 'split' | 'pdf' | 'parsed'
 type SidebarViewMode = 'parsed' | 'source'
-type ActiveTab = 'overview' | 'documents' | 'queries'
+type ActiveTab = 'overview' | 'documents' | 'queries' | 'evaluations'
 
 interface HighlightIndices {
   start: number
@@ -73,6 +73,8 @@ interface AppState {
   setQueriesPage: (page: number) => void
   chunksPage: number
   setChunksPage: (page: number) => void
+  evaluationsPage: number
+  setEvaluationsPage: (page: number) => void
 
   // Reset
   reset: () => void
@@ -98,6 +100,7 @@ const initialState = {
   docsPage: 1,
   queriesPage: 1,
   chunksPage: 1,
+  evaluationsPage: 1,
 }
 
 export const useAppStore = create<AppState>()(
@@ -183,6 +186,7 @@ export const useAppStore = create<AppState>()(
       setDocsPage: (page) => set({ docsPage: page }),
       setQueriesPage: (page) => set({ queriesPage: page }),
       setChunksPage: (page) => set({ chunksPage: page }),
+      setEvaluationsPage: (page) => set({ evaluationsPage: page }),
 
       // Reset
       reset: () => set(initialState),

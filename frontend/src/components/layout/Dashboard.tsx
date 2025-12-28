@@ -7,6 +7,7 @@ import { Sidebar } from './Sidebar'
 import { Overview } from '@/components/dashboard/Overview'
 import { DocumentsTab } from '@/components/documents/DocumentsTab'
 import { QueriesTab } from '@/components/queries/QueriesTab'
+import { EvaluationsTab } from '@/components/evaluations/EvaluationsTab'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export function Dashboard() {
@@ -30,6 +31,8 @@ export function Dashboard() {
       setActiveTab('documents')
     } else if (path.includes('/queries')) {
       setActiveTab('queries')
+    } else if (path.includes('/evaluations')) {
+      setActiveTab('evaluations')
     } else {
       setActiveTab('overview')
     }
@@ -37,7 +40,7 @@ export function Dashboard() {
 
   const { data, isLoading, error, refetch } = useDashboardData(expId)
 
-  const handleTabChange = (tab: 'overview' | 'documents' | 'queries') => {
+  const handleTabChange = (tab: 'overview' | 'documents' | 'queries' | 'evaluations') => {
     setActiveTab(tab)
     const basePath = `/experiment/${experimentId}`
     if (tab === 'overview') {
@@ -89,6 +92,7 @@ export function Dashboard() {
               <Route index element={<Overview data={data} />} />
               <Route path="documents/*" element={<DocumentsTab data={data} />} />
               <Route path="queries/*" element={<QueriesTab data={data} />} />
+              <Route path="evaluations/*" element={<EvaluationsTab data={data} />} />
             </Routes>
           ) : null}
         </main>

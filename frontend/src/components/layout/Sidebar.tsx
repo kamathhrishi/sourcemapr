@@ -1,15 +1,16 @@
-import { FileText, Search, Activity, Zap } from 'lucide-react'
+import { FileText, Search, Activity, Zap, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SidebarProps {
-  activeTab: 'overview' | 'documents' | 'queries'
-  onTabChange: (tab: 'overview' | 'documents' | 'queries') => void
+  activeTab: 'overview' | 'documents' | 'queries' | 'evaluations'
+  onTabChange: (tab: 'overview' | 'documents' | 'queries' | 'evaluations') => void
 }
 
 const tabs = [
   { id: 'overview' as const, label: 'Overview', icon: Activity },
   { id: 'documents' as const, label: 'Documents', icon: FileText },
   { id: 'queries' as const, label: 'Queries', icon: Search },
+  { id: 'evaluations' as const, label: 'Evaluations', icon: BarChart3 },
 ]
 
 export function Sidebar({ activeTab, onTabChange }: SidebarProps) {

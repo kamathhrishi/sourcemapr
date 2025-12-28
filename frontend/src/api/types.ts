@@ -141,6 +141,8 @@ export interface DashboardData {
   llm_calls: LLMCall[]
   stats: Stats
   experiments: Experiment[]
+  evaluations: Evaluation[]
+  categories: QueryCategory[]
 }
 
 // Request types
@@ -201,4 +203,38 @@ export interface Pipeline {
   llm_call_id: number | null
   created_at: string
   stages: PipelineStage[]
+}
+
+// Evaluation types for AI agent workspace
+export interface Evaluation {
+  id: number
+  evaluation_id: string
+  experiment_id: number | null
+  retrieval_id: string | null
+  evaluation_type: 'llm_judge' | 'category' | 'error_class'
+  metric_name: string | null
+  score: number | null
+  reasoning: string | null
+  category: string | null
+  error_type: string | null
+  metadata: Record<string, unknown>
+  agent_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QueryCategory {
+  id: number
+  retrieval_id: string
+  category: string
+  confidence: number | null
+  metadata: Record<string, unknown>
+  agent_name: string | null
+  created_at: string
+}
+
+export interface CategorySummary {
+  category: string
+  count: number
+  avg_confidence: number | null
 }

@@ -118,6 +118,9 @@ def main():
         help='Clear existing data before seeding demo'
     )
 
+    # MCP server command
+    subparsers.add_parser('mcp', help='Start MCP server for AI agents (Claude Code, Cursor, etc.)')
+
     args = parser.parse_args()
 
     if args.command == 'server':
@@ -137,6 +140,8 @@ def main():
         print(f"SourcemapR v{__version__}")
     elif args.command == 'demo':
         cmd_demo(args.clear)
+    elif args.command == 'mcp':
+        cmd_mcp()
     else:
         parser.print_help()
         sys.exit(1)
@@ -325,6 +330,20 @@ def cmd_demo(clear_first: bool = False):
     print("\nDemo data ready!")
     print("Start server with: sourcemapr server")
     print("Then visit: http://localhost:5000")
+
+
+def cmd_mcp():
+    """Start the MCP server for AI agents."""
+    try:
+        from sourcemapr.mcp_server import run
+        run()
+    except ImportError as e:
+        print(f"Error: Could not import MCP server module: {e}")
+        print("Make sure the mcp package is installed: pip install mcp")
+        sys.exit(1)
+    except Exception as e:
+        print(f"MCP server error: {e}")
+        sys.exit(1)
 
 
 def _seed_demo_data():

@@ -300,6 +300,8 @@ async def get_all_data(experiment_id: Optional[int] = Query(None)):
     llm_calls = db.get_llm_calls(experiment_id, limit=50)
     stats = db.get_stats(experiment_id)
     experiments = db.get_experiments()
+    evaluations = db.get_evaluations(experiment_id=experiment_id)
+    categories = db.get_query_categories()
 
     return {
         "traces": traces,
@@ -311,7 +313,9 @@ async def get_all_data(experiment_id: Optional[int] = Query(None)):
         "retrievals": retrievals,
         "llm_calls": llm_calls,
         "stats": stats,
-        "experiments": experiments
+        "experiments": experiments,
+        "evaluations": evaluations,
+        "categories": categories
     }
 
 
@@ -427,6 +431,97 @@ async def clear_data(experiment_id: Optional[int] = Query(None), reset: bool = Q
     else:
         db.clear_all_data()
         return {"status": "cleared"}
+
+
+# ========== Evaluations Endpoints ==========
+
+@app.get("/api/evaluations")
+async def get_evaluations_list(
+    experiment_id: Optional[int] = Query(None),
+    retrieval_id: Optional[str] = Query(None),
+    evaluation_type: Optional[str] = Query(None)
+):
+    """Get evaluations with optional filters."""
+    return db.get_evaluations(
+        experiment_id=experiment_id,
+        retrieval_id=retrieval_id,
+        evaluation_type=evaluation_type
+    )
+
+
+@app.post("/api/evaluations")
+async def create_evaluation(request: Request):
+    """Create a new evaluation."""
+    data = await request.json()
+    evaluation_id = db.store_evaluation(data)
+    return {"evaluation_id": evaluation_id, "status": "created"}
+
+
+@app.get("/api/evaluations/{evaluation_id}")
+async def get_evaluation_detail(evaluation_id: str):
+    """Get a specific evaluation."""
+    evaluation = db.get_evaluation(evaluation_id)
+    if not evaluation:
+        return {"error": "Evaluation not found"}
+    return evaluation
+
+
+@app.put("/api/evaluations/{evaluation_id}")
+async def update_evaluation_endpoint(evaluation_id: str, request: Request):
+    """Update an existing evaluation."""
+    updates = await request.json()
+    success = db.update_evaluation(evaluation_id, updates)
+    if not success:
+        return {"error": "Evaluation not found or no updates provided"}
+    return {"status": "updated", "evaluation_id": evaluation_id}
+
+
+@app.delete("/api/evaluations/{evaluation_id}")
+async def delete_evaluation_endpoint(evaluation_id: str):
+    """Delete an evaluation."""
+    success = db.delete_evaluation(evaluation_id)
+    if not success:
+        return {"error": "Evaluation not found"}
+    return {"status": "deleted", "evaluation_id": evaluation_id}
+
+
+# ========== Query Categories Endpoints ==========
+
+@app.get("/api/categories")
+async def get_categories_list(retrieval_id: Optional[str] = Query(None)):
+    """Get query categories, optionally filtered by retrieval_id."""
+    return db.get_query_categories(retrieval_id)
+
+
+@app.get("/api/categories/summary")
+async def get_categories_summary():
+    """Get summary of all categories with counts."""
+    return db.get_category_summary()
+
+
+@app.post("/api/categories")
+async def create_category(request: Request):
+    """Add a category to a query/retrieval."""
+    data = await request.json()
+    success = db.add_query_category(
+        retrieval_id=data.get('retrieval_id'),
+        category=data.get('category'),
+        confidence=data.get('confidence'),
+        metadata=data.get('metadata'),
+        agent_name=data.get('agent_name')
+    )
+    if not success:
+        return {"error": "Failed to add category"}
+    return {"status": "created", "category": data.get('category')}
+
+
+@app.delete("/api/categories/{retrieval_id}/{category}")
+async def delete_category(retrieval_id: str, category: str):
+    """Remove a category from a query/retrieval."""
+    success = db.remove_query_category(retrieval_id, category)
+    if not success:
+        return {"error": "Category not found"}
+    return {"status": "deleted"}
 
 
 # ========== File Serving ==========

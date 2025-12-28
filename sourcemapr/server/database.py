@@ -261,6 +261,41 @@ def init_db():
             )
         """)
 
+        # Evaluations table - LLM-as-judge scores, categories, error classifications
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                evaluation_id TEXT UNIQUE NOT NULL,
+                experiment_id INTEGER,
+                retrieval_id TEXT,
+                evaluation_type TEXT NOT NULL,
+                metric_name TEXT,
+                score REAL,
+                reasoning TEXT,
+                category TEXT,
+                error_type TEXT,
+                metadata TEXT,
+                agent_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE SET NULL
+            )
+        """)
+
+        # Query categories table - tags for queries
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS query_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                retrieval_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                confidence REAL,
+                metadata TEXT,
+                agent_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(retrieval_id, category)
+            )
+        """)
+
         # Create indexes for common queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_traces_experiment ON traces(experiment_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_experiment ON documents(experiment_id)")
@@ -274,6 +309,11 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pipelines_experiment ON pipelines(experiment_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_stages_pipeline ON pipeline_stages(pipeline_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_stage_chunks_stage ON stage_chunks(stage_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evaluations_experiment ON evaluations(experiment_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evaluations_retrieval ON evaluations(retrieval_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evaluations_type ON evaluations(evaluation_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_query_categories_retrieval ON query_categories(retrieval_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_query_categories_category ON query_categories(category)")
 
         # Migration: Add retrieval_id column if it doesn't exist
         try:
@@ -1513,6 +1553,206 @@ def get_pipeline_by_retrieval(retrieval_id: str) -> Optional[Dict]:
         if row:
             return get_pipeline(row['pipeline_id'])
         return None
+
+
+# =============================================================================
+# Evaluations CRUD
+# =============================================================================
+
+def store_evaluation(data: Dict) -> str:
+    """Store a new evaluation. Returns evaluation_id."""
+    import uuid
+    evaluation_id = data.get('evaluation_id') or f"eval_{uuid.uuid4().hex[:12]}"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO evaluations
+            (evaluation_id, experiment_id, retrieval_id, evaluation_type, metric_name,
+             score, reasoning, category, error_type, metadata, agent_name, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (
+            evaluation_id,
+            data.get('experiment_id'),
+            data.get('retrieval_id'),
+            data.get('evaluation_type', 'llm_judge'),
+            data.get('metric_name'),
+            data.get('score'),
+            data.get('reasoning'),
+            data.get('category'),
+            data.get('error_type'),
+            json.dumps(data.get('metadata', {})) if data.get('metadata') else None,
+            data.get('agent_name')
+        ))
+        conn.commit()
+    return evaluation_id
+
+
+def update_evaluation(evaluation_id: str, updates: Dict) -> bool:
+    """Update an existing evaluation."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Build dynamic update query
+        set_parts = []
+        values = []
+
+        for field in ['experiment_id', 'retrieval_id', 'evaluation_type', 'metric_name',
+                      'score', 'reasoning', 'category', 'error_type', 'agent_name']:
+            if field in updates:
+                set_parts.append(f"{field} = ?")
+                values.append(updates[field])
+
+        if 'metadata' in updates:
+            set_parts.append("metadata = ?")
+            values.append(json.dumps(updates['metadata']) if updates['metadata'] else None)
+
+        if not set_parts:
+            return False
+
+        set_parts.append("updated_at = CURRENT_TIMESTAMP")
+        values.append(evaluation_id)
+
+        cursor.execute(
+            f"UPDATE evaluations SET {', '.join(set_parts)} WHERE evaluation_id = ?",
+            values
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_evaluation(evaluation_id: str) -> bool:
+    """Delete an evaluation."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM evaluations WHERE evaluation_id = ?", (evaluation_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_evaluation(evaluation_id: str) -> Optional[Dict]:
+    """Get a single evaluation by ID."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM evaluations WHERE evaluation_id = ?", (evaluation_id,))
+        row = cursor.fetchone()
+        if row:
+            result = dict(row)
+            result['metadata'] = json.loads(result['metadata']) if result['metadata'] else {}
+            return result
+        return None
+
+
+def get_evaluations(
+    experiment_id: Optional[int] = None,
+    retrieval_id: Optional[str] = None,
+    evaluation_type: Optional[str] = None,
+    limit: int = 500
+) -> List[Dict]:
+    """Get evaluations with optional filters."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        conditions = []
+        params = []
+
+        if experiment_id is not None:
+            conditions.append("experiment_id = ?")
+            params.append(experiment_id)
+        if retrieval_id is not None:
+            conditions.append("retrieval_id = ?")
+            params.append(retrieval_id)
+        if evaluation_type is not None:
+            conditions.append("evaluation_type = ?")
+            params.append(evaluation_type)
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+
+        cursor.execute(
+            f"SELECT * FROM evaluations {where_clause} ORDER BY created_at DESC LIMIT ?",
+            params
+        )
+
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            result['metadata'] = json.loads(result['metadata']) if result['metadata'] else {}
+            results.append(result)
+        return results
+
+
+# =============================================================================
+# Query Categories CRUD
+# =============================================================================
+
+def add_query_category(retrieval_id: str, category: str, confidence: Optional[float] = None,
+                       metadata: Optional[Dict] = None, agent_name: Optional[str] = None) -> bool:
+    """Add a category to a query/retrieval."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT OR REPLACE INTO query_categories
+                (retrieval_id, category, confidence, metadata, agent_name)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                retrieval_id,
+                category,
+                confidence,
+                json.dumps(metadata) if metadata else None,
+                agent_name
+            ))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+
+def remove_query_category(retrieval_id: str, category: str) -> bool:
+    """Remove a category from a query/retrieval."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM query_categories WHERE retrieval_id = ? AND category = ?",
+            (retrieval_id, category)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_query_categories(retrieval_id: Optional[str] = None) -> List[Dict]:
+    """Get categories, optionally filtered by retrieval_id."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        if retrieval_id:
+            cursor.execute(
+                "SELECT * FROM query_categories WHERE retrieval_id = ? ORDER BY created_at DESC",
+                (retrieval_id,)
+            )
+        else:
+            cursor.execute("SELECT * FROM query_categories ORDER BY created_at DESC")
+
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            result['metadata'] = json.loads(result['metadata']) if result['metadata'] else {}
+            results.append(result)
+        return results
+
+
+def get_category_summary() -> List[Dict]:
+    """Get summary of all categories with counts."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT category, COUNT(*) as count, AVG(confidence) as avg_confidence
+            FROM query_categories
+            GROUP BY category
+            ORDER BY count DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
 
 
 # Initialize database on module import
