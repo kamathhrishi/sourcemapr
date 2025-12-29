@@ -5,9 +5,9 @@
 [![License](https://img.shields.io/pypi/l/sourcemapr.svg)](https://github.com/kamathhrishi/sourcemapr/blob/main/LICENSE)
 [![Downloads](https://img.shields.io/pypi/dm/sourcemapr.svg)](https://pypi.org/project/sourcemapr/)
 
-**See what your RAG system actually saw.**
+**Retrieval observability where humans and AI debug together.**
 
-SourceMapR provides evidence observability for RAG pipelines. Trace every LLM answer back to the exact document evidence that produced it, with complete evidence lineage.
+SourceMapR is a retrieval observability tool. Trace every LLM answer back to exact document evidence — in two lines of code. AI agents evaluate via MCP while humans review in the dashboard.
 
 ---
 
@@ -19,8 +19,10 @@ SourceMapR provides evidence observability for RAG pipelines. Trace every LLM an
 | "What prompt was sent to the LLM?" | Full prompt/response capture with token counts |
 | "Why did the model hallucinate?" | Click any chunk to view it in the original PDF |
 | "Is my chunking strategy working?" | Compare experiments side by side |
+| "How do I evaluate retrieval at scale?" | AI agents run LLM-as-judge via MCP |
+| "How do humans and AI collaborate?" | Shared workspace with evaluations UI |
 
-**Add RAG observability in two lines of code.**
+**Add retrieval observability in two lines of code. Let AI agents help you evaluate.**
 
 ---
 
@@ -112,6 +114,61 @@ See [Supported Features](sourcemapr/providers/README.md) for details.
 - **Experiment Tracking** — Organize runs and compare chunking strategies
 - **Evidence Lineage** — Complete trace from document load → parse → chunk → embed → retrieve → answer
 - **Debug RAG Hallucinations** — Verify grounding without guessing
+- **MCP Server** — AI agents can read data and write evaluations via Model Context Protocol
+- **Evaluations Tab** — View LLM-as-judge scores, categorize queries, track quality over time
+
+---
+
+## Human-AI Collaboration
+
+SourceMapR enables a collaborative workflow between humans and AI agents:
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   RAG Pipeline  │────▶│   SourceMapR    │◀────│    AI Agent     │
+│  (Your Code)    │     │   (Workspace)   │     │  (Claude, etc)  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │                       │
+        │ Traces queries,       │ Stores everything     │ Reads queries,
+        │ chunks, responses     │ in SQLite             │ writes evaluations
+        │                       │                       │
+        └───────────────────────┼───────────────────────┘
+                                │
+                                ▼
+                    ┌─────────────────────┐
+                    │   Human Reviews     │
+                    │   in Dashboard UI   │
+                    └─────────────────────┘
+```
+
+### MCP Tools for AI Agents
+
+Add to your Claude Code config (`~/.claude.json`):
+
+```json
+{
+  "mcpServers": {
+    "sourcemapr": {
+      "command": "python",
+      "args": ["-c", "from sourcemapr.mcp_server import run; run()"]
+    }
+  }
+}
+```
+
+**Read Tools:**
+- `list_queries` — List all retrieval queries
+- `get_query` — Get query details with retrieved chunks and LLM response
+- `list_documents` — List indexed documents
+- `list_experiments` — List experiments
+
+**Write Tools:**
+- `create_evaluation` — Store LLM-as-judge evaluation (relevance, faithfulness, etc.)
+- `add_query_category` — Categorize queries (e.g., "financial", "technical")
+- `list_evaluations` — View stored evaluations
+
+Example agent prompt:
+> "Use the sourcemapr MCP tools to evaluate all queries. For each query, score relevance (0-1) and faithfulness (0-1). Add reasoning for each score."
 
 ---
 
@@ -183,6 +240,6 @@ MIT
 
 ---
 
-**Built for developers who are tired of print-debugging RAG pipelines.**
+**Retrieval observability where humans and AI debug together.**
 
 [Website](https://kamathhrishi.github.io/sourcemapr) · [GitHub](https://github.com/kamathhrishi/sourcemapr)

@@ -12,21 +12,21 @@
   </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SourceMapR: RAG Observability & Evidence Tracing Tool</title>
-  <meta name="description" content="Debug RAG pipelines with evidence tracing. See exactly which chunks your LLM used. Works with LangChain & LlamaIndex." />
+  <title>SourceMapR: Retrieval Observability Where Humans & AI Debug Together</title>
+  <meta name="description" content="Retrieval observability in two lines of code. Trace evidence to sources, AI agents evaluate via MCP, humans review in dashboard. Works with LangChain & LlamaIndex." />
   <meta name="keywords" content="RAG observability, evidence observability for RAG, RAG debugging tool, RAG evidence tracing, RAG pipeline debugger, LangChain observability, LlamaIndex observability, trace LLM answers to sources, RAG trace viewer, SourceMapR, RAG evidence viewer, chunking strategy debugging" />
   <meta name="msvalidate.01" content="5526C3791FE95B65150DF36B0D540A32" />
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="SourceMapR: RAG Observability and Evidence Tracing Tool" />
-  <meta property="og:description" content="SourceMapR provides RAG observability, evidence tracing, and debugging tools for LangChain and LlamaIndex. See what your RAG system actually saw." />
+  <meta property="og:title" content="SourceMapR: Retrieval Observability Where Humans & AI Debug Together" />
+  <meta property="og:description" content="Retrieval observability in two lines of code. Trace evidence to sources. AI agents evaluate via MCP, humans review in dashboard." />
   <meta property="og:url" content="https://kamathhrishi.github.io/sourcemapr/" />
-  
+
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="SourceMapR: RAG Observability and Evidence Tracing Tool" />
-  <meta name="twitter:description" content="RAG debugging tool with evidence observability for LangChain and LlamaIndex. Trace answers to sources and debug RAG pipelines." />
+  <meta name="twitter:title" content="SourceMapR: Retrieval Observability Where Humans & AI Debug Together" />
+  <meta name="twitter:description" content="Retrieval observability in two lines of code. AI agents evaluate via MCP, humans review in dashboard." />
   
   <!-- Canonical URL -->
   <link rel="canonical" href="https://kamathhrishi.github.io/sourcemapr/" />
@@ -39,7 +39,7 @@
     "name": "SourceMapR",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Any",
-    "description": "RAG observability and evidence tracing tool for debugging RAG pipelines. Provides LangChain and LlamaIndex observability with evidence lineage and trace viewers.",
+    "description": "Retrieval observability in two lines of code. Trace evidence to sources. AI agents evaluate via MCP, humans review in dashboard.",
     "url": "https://kamathhrishi.github.io/sourcemapr/",
     "author": {
       "@type": "Organization",
@@ -50,7 +50,7 @@
       "price": "0",
       "priceCurrency": "USD"
     },
-    "keywords": "RAG observability, evidence observability for RAG, RAG debugging tool, RAG evidence tracing, LangChain observability, LlamaIndex observability"
+    "keywords": "RAG observability, human-AI collaboration, LLM-as-judge, MCP, evidence tracing, LangChain observability, LlamaIndex observability"
   }
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -157,10 +157,10 @@
     <div class="mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-24 lg:py-36">
       <div class="mx-auto max-w-3xl text-center">
         <h1 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl xl:text-7xl leading-tight">
-          See what your RAG system <span class="gradient-text">actually saw</span>
+          Retrieval observability where humans and AI <span class="gradient-text">debug together</span>
           </h1>
         <p class="mt-6 sm:mt-8 text-base leading-relaxed text-gray-600 sm:text-lg lg:text-xl max-w-2xl mx-auto">
-          Built for developers who are tired of print-debugging RAG pipelines. Run locally. Own your data. See your evidence.
+          Trace every answer back to exact evidence — in two lines of code. AI agents evaluate via MCP, humans review in the dashboard.
           </p>
         <!-- Quick Start Terminal -->
         <div class="mt-10 sm:mt-12 mx-auto max-w-md">
@@ -184,10 +184,10 @@
         <div class="mx-auto max-w-7xl px-4 sm:px-6">
           <div class="mx-auto max-w-2xl text-center">
             <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-              Add RAG Observability in Two Lines
+              Add Retrieval Observability in Two Lines
             </h2>
             <p class="mt-5 text-lg text-gray-600 leading-relaxed">
-              Add SourceMapR to your existing LangChain or LlamaIndex pipeline. Your code stays the same — we provide RAG observability automatically.
+              Add SourceMapR to your existing LangChain or LlamaIndex pipeline. Your code stays the same — we provide retrieval observability automatically.
             </p>
           </div>
 
@@ -259,17 +259,17 @@ stop_tracing()</code></pre>
     <div class="mx-auto max-w-7xl px-4 sm:px-6">
       <div class="mx-auto max-w-2xl text-center">
         <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-          RAG Observability Features
+          Retrieval Observability Features
         </h2>
         <p class="mt-4 text-lg text-gray-600">
-          Everything you need to debug and understand your RAG pipeline
+          Debug retrieval with full evidence tracing — AI agents evaluate, humans review
         </p>
         <div class="mt-6 flex flex-wrap justify-center gap-2 text-xs sm:text-sm text-gray-600">
           <a href="https://pypi.org/project/sourcemapr/" class="rounded-full bg-white px-4 py-1.5 shadow-sm border border-gray-200 hover:border-gray-300 transition-all">PyPI v0.1.0</a>
           <span class="rounded-full bg-white px-4 py-1.5 shadow-sm border border-gray-200">MIT License</span>
           <span class="rounded-full bg-white px-4 py-1.5 shadow-sm border border-gray-200">Local-first</span>
           <span class="rounded-full bg-white px-4 py-1.5 shadow-sm border border-gray-200">SQLite storage</span>
-          <span class="rounded-full bg-white px-4 py-1.5 shadow-sm border border-gray-200">Zero config</span>
+          <span class="rounded-full bg-cyan-100 px-4 py-1.5 shadow-sm border border-cyan-200 text-cyan-700">MCP Server</span>
         </div>
       </div>
 
@@ -346,9 +346,35 @@ stop_tracing()</code></pre>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
             </svg>
           </div>
-          <h3 class="mt-6 text-lg font-semibold text-gray-900">Debug RAG Hallucinations</h3>
+          <h3 class="mt-6 text-lg font-semibold text-gray-900">Debug Hallucinations</h3>
           <p class="mt-3 text-sm text-gray-600">
             Verify grounding without guessing. See exactly what evidence was used to generate each answer.
+          </p>
+        </div>
+
+        <!-- Feature 7 - MCP -->
+        <div class="rounded-2xl glass-card p-8 hover-lift">
+          <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-100">
+            <svg class="h-6 w-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+            </svg>
+          </div>
+          <h3 class="mt-6 text-lg font-semibold text-gray-900">MCP for AI Agents</h3>
+          <p class="mt-3 text-sm text-gray-600">
+            AI agents read queries and write evaluations via Model Context Protocol. Humans review in the dashboard.
+          </p>
+        </div>
+
+        <!-- Feature 8 - Evaluations -->
+        <div class="rounded-2xl glass-card p-8 hover-lift">
+          <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-amber-100">
+            <svg class="h-6 w-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <h3 class="mt-6 text-lg font-semibold text-gray-900">LLM-as-Judge Evaluations</h3>
+          <p class="mt-3 text-sm text-gray-600">
+            Score relevance, faithfulness, and completeness. AI agents evaluate at scale, humans review and guide.
           </p>
         </div>
       </div>
@@ -363,7 +389,7 @@ stop_tracing()</code></pre>
           Works with your favorite frameworks
         </h2>
         <p class="mt-4 text-lg text-gray-600">
-          Drop-in instrumentation for LangChain and LlamaIndex. Full RAG evidence tracing support.
+          Drop-in instrumentation for LangChain and LlamaIndex. Full retrieval evidence tracing.
         </p>
       </div>
 
@@ -456,10 +482,10 @@ stop_tracing()</code></pre>
     <div class="mx-auto max-w-7xl px-4 sm:px-6">
       <div class="mx-auto max-w-2xl text-center">
         <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-          How RAG Evidence Tracing Works
+          How Retrieval Evidence Tracing Works
         </h2>
         <p class="mt-4 text-lg text-gray-600">
-          SourceMapR provides RAG observability by tracing every step of your RAG pipeline with complete evidence lineage
+          SourceMapR traces every step of your retrieval pipeline with complete evidence lineage
         </p>
       </div>
 
@@ -537,11 +563,11 @@ stop_tracing()</code></pre>
             </svg>
           </div>
           <div>
-            <h3 class="text-lg font-semibold text-gray-900">Complete RAG Evidence Lineage</h3>
+            <h3 class="text-lg font-semibold text-gray-900">Complete Retrieval Evidence Lineage</h3>
             <p class="mt-2 text-sm text-gray-600">
               For every answer, SourceMapR shows you: which chunks were retrieved with similarity scores,
               where they came from in the original document (with PDF highlighting), what prompt was sent to the LLM,
-              and how many tokens were used. This helps you debug RAG hallucinations and verify grounding without guessing.
+              and how many tokens were used. Debug hallucinations and verify grounding without guessing.
             </p>
           </div>
         </div>
@@ -584,7 +610,7 @@ stop_tracing()</code></pre>
     <div class="mx-auto max-w-7xl px-4 sm:px-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="text-xs sm:text-sm text-gray-600">
-          © <span id="y"></span> SourceMapR — Evidence observability for RAG.
+          © <span id="y"></span> SourceMapR — Retrieval observability where humans and AI debug together.
         </div>
         <div class="flex flex-wrap gap-3 sm:gap-6 text-xs sm:text-sm text-gray-600">
           <a href="https://github.com/kamathhrishi/sourcemapr" class="hover:text-gray-900 transition-colors">GitHub</a>
